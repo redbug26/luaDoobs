@@ -1,0 +1,68 @@
+-- Official Doobs template: Inventory
+-- Item, location, quantity, value, warranty; “Under warranty” collection.
+-- Localized with doobs.tr(English text): translations registered by doobs.trInit below.
+
+--[[doobs-template
+kind = library
+order = 30
+icon = shippingbox
+color = orange
+name = Inventaire | Inventory
+summary = Objet, lieu, quantité, valeur, garantie | Item, location, quantity, value, warranty
+]]
+
+-- French translations (English is the source language).
+doobs.trInit("fr", {
+  ["Inventory"] = "Inventaire",
+  ["Item, location, quantity, value, warranty"] = "Objet, lieu, quantité, valeur, garantie",
+  ["Quantity"] = "Quantité",
+  ["Unit value"] = "Valeur unitaire",
+  ["Warranty end"] = "Fin de garantie",
+  ["Item"] = "Objet",
+  ["Room"] = "Pièce",
+  ["Living room"] = "Salon",
+  ["Kitchen"] = "Cuisine",
+  ["Bedroom"] = "Chambre",
+  ["Office"] = "Bureau",
+  ["Basement"] = "Cave",
+  ["Attic"] = "Grenier",
+  ["Total value"] = "Valeur totale",
+  ["Purchase date"] = "Date d'achat",
+  ["Receipt"] = "Facture",
+  ["Serial number"] = "N° de série",
+  ["Under warranty"] = "Sous garantie",
+})
+local T = doobs.tr
+
+function parameters(ctx)
+  return doobs.parameters(T("Inventory"), {
+    database = T("Inventory"),
+    message = T("Item, location, quantity, value, warranty"),
+  })
+end
+
+function import(ctx)
+  local QTY, UNIT, WARRANTY = T("Quantity"), T("Unit value"), T("Warranty end")
+
+  local db = doobs.database()
+
+  local items = db:addLibrary(T("Inventory"), { icon = "shippingbox", color = "orange" })
+  items:addField(T("Item"))
+  items:addField(T("Photo"), "media")
+  items:addField(T("Room"), "choice", { choices = {
+    T("Living room"), T("Kitchen"), T("Bedroom"), T("Office"),
+    T("Garage"), T("Basement"), T("Attic") } })
+  items:addField(QTY, "integer", { default = 1 })
+  items:addField(UNIT, "currency")
+  items:addField(T("Total value"), "formula", { result = "currency", formula = string.format("[%s] * [%s]", QTY, UNIT) })
+  items:addField(T("Purchase date"), "date")
+  items:addField(WARRANTY, "date")
+  items:addField(T("Receipt"), "media")
+  items:addField(T("Serial number"))
+  items:addField(T("Notes"), "longtext")
+
+  -- Warranty ending after the day the database is created.
+  items:addCollection(T("Under warranty"), { { WARRANTY, ">", os.date("%Y-%m-%d") } })
+
+  return db
+end

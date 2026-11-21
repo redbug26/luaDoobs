@@ -1,0 +1,278 @@
+[
+  {
+    "file": "books.luaDoobs",
+    "title": {
+      "en": "Books",
+      "fr": "Livres"
+    },
+    "description": {
+      "en": "Catalog books with authors, genres, ISBNs, reading status, ratings and loans.",
+      "fr": "Cataloguez les livres avec auteurs, genres, ISBN, état de lecture, notes et prêts."
+    },
+    "directory": "collections"
+  },
+  {
+    "file": "movies.luaDoobs",
+    "title": {
+      "en": "Movies",
+      "fr": "Films"
+    },
+    "description": {
+      "en": "Catalog films with posters, directors, genres, running time, viewing status and ratings.",
+      "fr": "Cataloguez les films avec affiches, réalisateurs, genres, durée, état de visionnage et notes."
+    },
+    "directory": "collections"
+  },
+  {
+    "file": "open-library-books.luaDoobs",
+    "title": {
+      "en": "Open Library books",
+      "fr": "Livres Open Library"
+    },
+    "description": {
+      "en": "Create a book library from a chosen Open Library subject, with covers and reading status.",
+      "fr": "Créez une bibliothèque de livres à partir d’un sujet Open Library, avec couvertures et état de lecture."
+    },
+    "directory": "collections"
+  },
+  {
+    "file": "retro.luaDoobs",
+    "title": {
+      "en": "Retro collection (demo)",
+      "fr": "Collection rétro (démo)"
+    },
+    "description": {
+      "en": "Explore a sample collection of games, computers, publishers and acquisitions with relations and calculated totals.",
+      "fr": "Découvrez une collection de démonstration de jeux, machines, éditeurs et acquisitions, avec relations et totaux calculés."
+    },
+    "directory": "collections"
+  },
+  {
+    "file": "website-directory.luaDoobs",
+    "title": {
+      "en": "Website directory",
+      "fr": "Répertoire de sites Web"
+    },
+    "description": {
+      "en": "Organize bookmarks with multiple categories, descriptions, manually attached screenshots, reviews and ratings.",
+      "fr": "Classez les signets dans plusieurs catégories, avec descriptions, captures ajoutées manuellement, avis et évaluations."
+    },
+    "directory": "collections"
+  },
+  {
+    "file": "wine-cellar.luaDoobs",
+    "title": {
+      "en": "Wine cellar",
+      "fr": "Cave à vins"
+    },
+    "description": {
+      "en": "Manage estates, wine lots, vintages, appellations, prices, storage locations and tasting history, with a calculated drinking window. Bottle quantities are maintained manually; the date a lot is finished is recorded automatically.",
+      "fr": "Gérez les domaines, lots de bouteilles, millésimes, appellations, prix, emplacements et dégustations, avec la période de consommation calculée. Les quantités sont mises à jour manuellement ; la date de fin d’un lot est notée automatiquement."
+    },
+    "directory": "collections"
+  },
+  {
+    "file": "household-budget.luaDoobs",
+    "title": {
+      "en": "Household budget",
+      "fr": "Budget familial"
+    },
+    "description": {
+      "en": "Create a monthly household budget with custom categories, planned and actual amounts, payment status and calculated differences.",
+      "fr": "Créez un budget familial mensuel avec catégories personnalisées, montants prévus et réels, état de paiement et écarts calculés."
+    },
+    "directory": "home"
+  },
+  {
+    "file": "inventory.luaDoobs",
+    "title": {
+      "en": "Inventory",
+      "fr": "Inventaire"
+    },
+    "description": {
+      "en": "Track belongings by room with photos, quantities, purchase prices, calculated values and warranties.",
+      "fr": "Suivez les biens par pièce avec photos, quantités, prix d’achat, valeurs calculées et garanties."
+    },
+    "directory": "home"
+  },
+  {
+    "file": "parcel-tracking.luaDoobs",
+    "title": {
+      "en": "Parcel tracking",
+      "fr": "Suivi des colis"
+    },
+    "description": {
+      "en": "Track incoming and outgoing parcels: carrier, tracking number, status, order, costs, expected and delivery dates, delivery steps and recipients. The tracking link and the dates are filled in by automatic rules.",
+      "fr": "Suivez les colis reçus et envoyés : transporteur, numéro de suivi, statut, commande, frais, dates prévue et de livraison, étapes et destinataires. Le lien de suivi et les dates sont remplis par des règles automatiques."
+    },
+    "directory": "home"
+  },
+  {
+    "file": "recipes.luaDoobs",
+    "title": {
+      "en": "Recipes",
+      "fr": "Recettes"
+    },
+    "description": {
+      "en": "Organize recipes with photos, ingredients, steps, dietary categories, preparation times and ratings.",
+      "fr": "Organisez les recettes avec photos, ingrédients, étapes, catégories alimentaires, temps de préparation et notes."
+    },
+    "directory": "home"
+  },
+  {
+    "file": "subscriptions.luaDoobs",
+    "title": {
+      "en": "Subscriptions and services",
+      "fr": "Abonnements et services"
+    },
+    "description": {
+      "en": "Track recurring prices, billing frequency, payments and renewals, with an annual total for subscriptions selected in the summary. Amounts are in EUR.",
+      "fr": "Suivez les prix récurrents, fréquences, prélèvements et renouvellements, avec un total annuel des abonnements sélectionnés dans le récapitulatif. Montants en EUR."
+    },
+    "directory": "home"
+  },
+  {
+    "file": "adeps-points-verts.luaDoobs",
+    "title": {
+      "en": "ADEPS Points verts",
+      "fr": "Points verts ADEPS"
+    },
+    "description": {
+      "en": "Browse all ADEPS walking events from ODWB in an automatically refreshed linked library, including locations, accessibility, GPX links, archives and cancellations.",
+      "fr": "Consultez tous les rendez-vous ADEPS de la source ODWB dans une bibliothèque liée actualisée automatiquement : lieux, accessibilité, liens GPX, archives et annulations."
+    },
+    "directory": "personal"
+  },
+  {
+    "file": "belgian-localities.luaDoobs",
+    "title": {
+      "en": "Belgian localities",
+      "fr": "Villes et localités belges"
+    },
+    "description": {
+      "en": "Browse Belgian postal localities from ODWB in an automatically refreshed linked library, with postal codes, administrative divisions and coordinates.",
+      "fr": "Consultez les localités postales belges de la source ODWB dans une bibliothèque liée actualisée automatiquement, avec codes postaux, divisions administratives et coordonnées."
+    },
+    "directory": "personal"
+  },
+  {
+    "file": "contacts.luaDoobs",
+    "title": {
+      "en": "Contacts",
+      "fr": "Contacts"
+    },
+    "description": {
+      "en": "Manage names, companies, photos, phone numbers, email addresses, postal addresses, birthdays and notes.",
+      "fr": "Gérez les noms, sociétés, photos, téléphones, e-mails, adresses, anniversaires et notes."
+    },
+    "directory": "personal"
+  },
+  {
+    "file": "gift-tracker.luaDoobs",
+    "title": {
+      "en": "Gift tracker",
+      "fr": "Suivi des cadeaux"
+    },
+    "description": {
+      "en": "Gift ideas, purchases and gifts given or received, by person and occasion, with budgets, thank-you notes and upcoming birthdays.",
+      "fr": "Idées, achats et cadeaux offerts ou reçus, par personne et par occasion, avec budgets, remerciements et anniversaires à venir."
+    },
+    "directory": "personal"
+  },
+  {
+    "file": "medication-tracker.luaDoobs",
+    "title": {
+      "en": "Medication tracker",
+      "fr": "Suivi des médicaments"
+    },
+    "description": {
+      "en": "Record medicines, manually maintained stock, prescribed treatment instructions and a dose log. No dosage calculation or notifications.",
+      "fr": "Consignez les médicaments, le stock tenu manuellement, les consignes de traitement prescrites et les prises. Sans calcul de dose ni notifications."
+    },
+    "directory": "personal"
+  },
+  {
+    "file": "outdoor-journal.luaDoobs",
+    "title": {
+      "en": "Outdoor journal and weather",
+      "fr": "Journal de sorties et météo"
+    },
+    "description": {
+      "en": "Keep an outing journal linked to a 16-day Open-Meteo forecast, refreshed every three hours for the chosen location.",
+      "fr": "Tenez un journal de sorties relié aux prévisions Open-Meteo à 16 jours, actualisées toutes les trois heures pour le lieu choisi."
+    },
+    "directory": "personal"
+  },
+  {
+    "file": "running-training-plan.luaDoobs",
+    "title": {
+      "en": "Running training plan",
+      "fr": "Plan d’entraînement de course à pied"
+    },
+    "description": {
+      "en": "Generate a progressive running schedule from your goal, start date, number of weeks, sessions per week and easy pace.",
+      "fr": "Générez un programme progressif selon votre objectif, date de début, nombre de semaines, séances par semaine et allure facile."
+    },
+    "directory": "personal"
+  },
+  {
+    "file": "trips.luaDoobs",
+    "title": {
+      "en": "Trips",
+      "fr": "Voyages"
+    },
+    "description": {
+      "en": "Plan trips with dates, destinations, accommodation, places, expenses, budgets and memories.",
+      "fr": "Planifiez les voyages avec dates, destinations, hébergements, lieux, dépenses, budgets et souvenirs."
+    },
+    "directory": "personal"
+  },
+  {
+    "file": "job-applications.luaDoobs",
+    "title": {
+      "en": "Job applications",
+      "fr": "Suivi des candidatures"
+    },
+    "description": {
+      "en": "Follow your job applications with companies and contacts: status from wish list to offer, source, contract, salary range, interviews, follow-ups and documents. Dates are filled in by automatic rules.",
+      "fr": "Suivez vos candidatures avec entreprises et contacts : statut de la liste d’envies à l’offre, source, contrat, fourchette de salaire, entretiens, relances et documents. Les dates sont remplies par des règles automatiques."
+    },
+    "directory": "work"
+  },
+  {
+    "file": "mini-crm.luaDoobs",
+    "title": {
+      "en": "Mini CRM",
+      "fr": "Mini CRM"
+    },
+    "description": {
+      "en": "Manage customers, suppliers and acquaintances with contact details, notes, exchange history, follow-ups, appointments and related projects.",
+      "fr": "Gérez les clients, fournisseurs et connaissances avec coordonnées, notes, historique des échanges, relances, rendez-vous et projets associés."
+    },
+    "directory": "work"
+  },
+  {
+    "file": "project-management.luaDoobs",
+    "title": {
+      "en": "Project management",
+      "fr": "Gestion de projets"
+    },
+    "description": {
+      "en": "Manage projects with multiple tasks, documents and contacts, plus dates, status, budget, calculated task progress and costs.",
+      "fr": "Gérez les projets avec plusieurs tâches, documents et contacts, ainsi que dates, statuts, budgets, avancement et coûts calculés."
+    },
+    "directory": "work"
+  },
+  {
+    "file": "projects.luaDoobs",
+    "title": {
+      "en": "Projects",
+      "fr": "Projets"
+    },
+    "description": {
+      "en": "Track project descriptions, status, priority, dates, budget and time spent, with calculated days remaining.",
+      "fr": "Suivez les descriptions, statuts, priorités, dates, budgets et temps passé des projets, avec calcul des jours restants."
+    },
+    "directory": "work"
+  }
+]

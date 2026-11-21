@@ -1,0 +1,11 @@
+{
+  "file": "inventory.luaDoobs",
+  "title": {
+    "en": "Inventory",
+    "fr": "Inventaire"
+  },
+  "description": {
+    "en": "Track belongings by room with photos, quantities, purchase prices, calculated values and warranties.",
+    "fr": "Suivez les biens par pièce avec photos, quantités, prix d’achat, valeurs calculées et garanties."
+  }
+}

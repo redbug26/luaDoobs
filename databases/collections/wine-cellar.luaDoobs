@@ -1,0 +1,224 @@
+-- Wine cellar
+-- Open in Doobs to create Estates, Storage locations, Wines and Tastings.
+-- One wine record represents a lot with the same vintage, price and storage location.
+-- Update remaining bottles manually; recording a tasting does not change stock.
+-- The drinking window status (too young, ready, drink soon, past peak) is calculated from the dates.
+-- Automatic rules (created with the database): a lot whose remaining bottles reach 0 gets today as
+-- “Finished on”; a lot restocked clears it.
+-- No network or sample records. Attach bottle photos in Doobs after creation.
+
+doobs.trInit("fr", {
+  ["Wine cellar"] = "Cave à vins",
+  ["Wine lots, estates, storage locations and tasting history. Quantities and drinking windows are entered manually."] = "Lots de bouteilles, domaines, emplacements et historique de dégustation. Les quantités et périodes de consommation sont saisis manuellement.",
+  ["Estates"] = "Domaines",
+  ["Estate"] = "Domaine",
+  ["Region"] = "Région",
+  ["Country"] = "Pays",
+  ["Website"] = "Site web",
+  ["Address"] = "Adresse",
+  ["Notes"] = "Notes",
+  ["Storage locations"] = "Emplacements",
+  ["Location"] = "Emplacement",
+  ["Description"] = "Description",
+  ["Storage"] = "Rangement",
+  ["Wines"] = "Vins",
+  ["Wine"] = "Vin",
+  ["Vintage"] = "Millésime",
+  ["Appellation"] = "Appellation",
+  ["Red"] = "Rouge",
+  ["White"] = "Blanc",
+  ["Rosé"] = "Rosé",
+  ["Sparkling"] = "Effervescent",
+  ["Sweet"] = "Moelleux",
+  ["Fortified"] = "Fortifié",
+  ["Wine type"] = "Type de vin",
+  ["Grape varieties"] = "Cépages",
+  ["Bottle size (cl)"] = "Contenance (cl)",
+  ["Photo"] = "Photo",
+  ["Bin"] = "Casier",
+  ["Bottles remaining"] = "Bouteilles restantes",
+  ["Bottle price"] = "Prix par bouteille",
+  ["Purchased on"] = "Acheté le",
+  ["Seller"] = "Vendeur",
+  ["Drink from"] = "À boire à partir du",
+  ["Drink before"] = "À boire avant le",
+  ["Rating"] = "Appréciation",
+  ["Stock value"] = "Valeur du stock",
+  ["In stock"] = "En stock",
+  ["Out of stock"] = "Épuisés",
+  ["Cellar"] = "Cave",
+  ["Tasting preferences"] = "Dégustation",
+  ["Tastings"] = "Dégustations",
+  ["Occasion"] = "Occasion",
+  ["Wine lot"] = "Lot de vin",
+  ["Tasting date"] = "Date de dégustation",
+  ["Bottles opened"] = "Bouteilles ouvertes",
+  ["Tasting notes"] = "Notes de dégustation",
+  ["Food pairing"] = "Accord mets-vin",
+  ["Guests"] = "Invités",
+  ["Tasting"] = "Dégustation",
+  ["Drinking window"] = "Période de consommation",
+  ["Too young"] = "Trop jeune",
+  ["Ready"] = "À boire",
+  ["Drink soon"] = "À boire bientôt",
+  ["Past peak"] = "Passé",
+  ["Finished on"] = "Terminé le",
+  ["Ready to drink"] = "Prêts à boire",
+  ["Drink within a year"] = "À boire dans l’année",
+  ["Lot finished"] = "Lot terminé",
+  ["Lot restocked"] = "Lot réapprovisionné",
+})
+local T = doobs.tr
+
+-- Reused labels, localized once.
+local N = {
+  wine_cellar = T("Wine cellar"),
+  introduction = T("Wine lots, estates, storage locations and tasting history. Quantities and drinking windows are entered manually."),
+  estates = T("Estates"),
+  estate = T("Estate"),
+  region = T("Region"),
+  country = T("Country"),
+  website = T("Website"),
+  address = T("Address"),
+  notes = T("Notes"),
+  storage_locations = T("Storage locations"),
+  location = T("Location"),
+  description = T("Description"),
+  storage = T("Storage"),
+  wines = T("Wines"),
+  wine = T("Wine"),
+  vintage = T("Vintage"),
+  appellation = T("Appellation"),
+  red = T("Red"),
+  white = T("White"),
+  ros = T("Rosé"),
+  sparkling = T("Sparkling"),
+  sweet = T("Sweet"),
+  fortified = T("Fortified"),
+  wine_type = T("Wine type"),
+  grape_varieties = T("Grape varieties"),
+  bottle_size_cl = T("Bottle size (cl)"),
+  photo = T("Photo"),
+  bin = T("Bin"),
+  bottles_remaining = T("Bottles remaining"),
+  bottle_price = T("Bottle price"),
+  purchased_on = T("Purchased on"),
+  seller = T("Seller"),
+  drink_from = T("Drink from"),
+  drink_before = T("Drink before"),
+  rating = T("Rating"),
+  stock_value = T("Stock value"),
+  in_stock = T("In stock"),
+  out_of_stock = T("Out of stock"),
+  cellar = T("Cellar"),
+  tasting_preferences = T("Tasting preferences"),
+  tastings = T("Tastings"),
+  occasion = T("Occasion"),
+  wine_lot = T("Wine lot"),
+  tasting_date = T("Tasting date"),
+  bottles_opened = T("Bottles opened"),
+  tasting_notes = T("Tasting notes"),
+  food_pairing = T("Food pairing"),
+  guests = T("Guests"),
+  tasting = T("Tasting"),
+  drinking_window = T("Drinking window"),
+  too_young = T("Too young"),
+  ready = T("Ready"),
+  drink_soon = T("Drink soon"),
+  past_peak = T("Past peak"),
+  finished_on = T("Finished on"),
+}
+
+function parameters(ctx)
+  return doobs.parameters(N.wine_cellar, {
+    database = N.wine_cellar,
+    message = N.introduction,
+  })
+end
+
+function import(ctx)
+  local db = doobs.database()
+  local estates = db:addLibrary(N.estates, { icon = "building.2", color = "green" })
+  estates:addField(N.estate, "text")
+  estates:addField(N.region, "text")
+  estates:addField(N.country, "text")
+  estates:addField(N.website, "url")
+  estates:addField(N.address, "address")
+  estates:addField(N.notes, "longtext")
+  estates:setTitle(N.estate)
+  estates:setSubtitle(N.region)
+  estates:setSort(N.estate)
+  estates:setView("table")
+  local form_estates = estates:defaultForm({ columns = 2 })
+  form_estates:addSection(N.estate, { N.estate, N.region, N.country, N.website, N.address, N.notes })
+  local locations = db:addLibrary(N.storage_locations, { icon = "shippingbox", color = "brown" })
+  locations:addField(N.location, "text")
+  locations:addField(N.description, "longtext")
+  locations:addField(N.notes, "longtext")
+  locations:setTitle(N.location)
+  locations:setSort(N.location)
+  locations:setView("table")
+  local form_locations = locations:defaultForm({ columns = 2 })
+  form_locations:addSection(N.storage, { N.location, N.description, N.notes })
+  local wines = db:addLibrary(N.wines, { icon = "wineglass", color = "red" })
+  wines:addField(N.wine, "text")
+  wines:addField(N.estate, "relation", { library = estates })
+  wines:addField(N.vintage, "integer")
+  wines:addField(N.appellation, "text")
+  wines:addField(N.wine_type, "choice", { choices = { N.red, N.white, N.ros, N.sparkling, N.sweet, N.fortified } })
+  wines:addField(N.grape_varieties, "text")
+  wines:addField(N.bottle_size_cl, "decimal", { default = 75 })
+  wines:addField(N.photo, "media")
+  wines:addField(N.location, "relation", { library = locations })
+  wines:addField(N.bin, "text")
+  wines:addField(N.bottles_remaining, "integer", { default = 1 })
+  wines:addField(N.bottle_price, "currency", { currency = "EUR" })
+  wines:addField(N.purchased_on, "date")
+  wines:addField(N.seller, "text")
+  wines:addField(N.drink_from, "date")
+  wines:addField(N.drink_before, "date")
+  wines:addField(N.rating, "rating", { max = 5 })
+  wines:addField(N.notes, "longtext")
+  wines:addField(N.finished_on, "date")
+  -- Status of the drinking window: before “Drink from”, after “Drink before”, or in it (“Drink soon”
+  -- in its last year). Empty when neither date is entered.
+  wines:addField(N.drinking_window, "formula", { result = "text", formula = string.format(
+    'IF(AND(ISBLANK([%s]); ISBLANK([%s])); ""; IF(AND(NOT(ISBLANK([%s])); [%s] > TODAY()); "%s"; IF(ISBLANK([%s]); "%s"; IF([%s] < TODAY(); "%s"; IF(DAYS([%s]; TODAY()) <= 365; "%s"; "%s")))))',
+    N.drink_from, N.drink_before, N.drink_from, N.drink_from, N.too_young, N.drink_before, N.ready,
+    N.drink_before, N.past_peak, N.drink_before, N.drink_soon, N.ready) })
+  wines:addField(N.stock_value, "formula", { result = "currency", formula = string.format("IF(OR(ISBLANK([%s]); ISBLANK([%s])); \"\"; [%s] * [%s])", N.bottle_price, N.bottles_remaining, N.bottle_price, N.bottles_remaining) })
+  wines:setTitle(N.wine)
+  wines:setSubtitle(N.vintage)
+  wines:setSort(N.wine, N.vintage)
+  wines:setView("table")
+  wines:addCollection(N.in_stock, { { N.bottles_remaining, ">", 0 } })
+  wines:addCollection(N.out_of_stock, { { N.bottles_remaining, "=", 0 } })
+  wines:addCollection(T("Ready to drink"), { { N.bottles_remaining, ">", 0 }, { N.drinking_window, "=", N.ready } })
+  wines:addCollection(T("Drink within a year"), { { N.bottles_remaining, ">", 0 }, { N.drinking_window, "=", N.drink_soon } })
+  wines:addCollection(N.past_peak, { { N.bottles_remaining, ">", 0 }, { N.drinking_window, "=", N.past_peak } })
+  -- Automatic rules: date of the last bottle, cleared when the lot is restocked.
+  wines:addRule(T("Lot finished"), { when = { N.bottles_remaining },
+    condition = { { N.bottles_remaining, "=", 0 }, { N.finished_on, "empty" } }, set = { [N.finished_on] = "@today" } })
+  wines:addRule(T("Lot restocked"), { on = "update", when = { N.bottles_remaining },
+    condition = { { N.bottles_remaining, ">", 0 }, { N.finished_on, "notempty" } }, set = { [N.finished_on] = "@clear" } })
+  local form_wines = wines:defaultForm({ columns = 2 })
+  form_wines:addSection(N.wine, { N.wine, N.estate, N.vintage, N.appellation, N.wine_type, N.grape_varieties, N.bottle_size_cl, N.photo })
+  form_wines:addSection(N.cellar, { N.location, N.bin, N.bottles_remaining, N.bottle_price, N.stock_value, N.purchased_on, N.seller })
+  form_wines:addSection(N.tasting_preferences, { N.drink_from, N.drink_before, N.drinking_window, N.finished_on, N.rating, N.notes })
+  local tastings = db:addLibrary(N.tastings, { icon = "star.bubble", color = "purple" })
+  tastings:addField(N.occasion, "text")
+  tastings:addField(N.wine_lot, "relation", { library = wines })
+  tastings:addField(N.tasting_date, "date", { default = "@today" })
+  tastings:addField(N.bottles_opened, "integer")
+  tastings:addField(N.rating, "rating", { max = 5 })
+  tastings:addField(N.tasting_notes, "longtext")
+  tastings:addField(N.food_pairing, "text")
+  tastings:addField(N.guests, "text")
+  tastings:setTitle(N.occasion)
+  tastings:setSubtitle(N.tasting_date)
+  tastings:setSort("-" .. N.tasting_date)
+  tastings:setView("table")
+  local form_tastings = tastings:defaultForm({ columns = 2 })
+  form_tastings:addSection(N.tasting, { N.occasion, N.wine_lot, N.tasting_date, N.bottles_opened, N.rating, N.tasting_notes, N.food_pairing, N.guests })
+  return db
+end

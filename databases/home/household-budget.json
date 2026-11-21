@@ -1,0 +1,11 @@
+{
+  "file": "household-budget.luaDoobs",
+  "title": {
+    "en": "Household budget",
+    "fr": "Budget familial"
+  },
+  "description": {
+    "en": "Create a monthly household budget with custom categories, planned and actual amounts, payment status and calculated differences.",
+    "fr": "Créez un budget familial mensuel avec catégories personnalisées, montants prévus et réels, état de paiement et écarts calculés."
+  }
+}

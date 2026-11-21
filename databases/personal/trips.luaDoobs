@@ -1,0 +1,65 @@
+-- Official Doobs template: Trips
+-- Destination, dates, budget; “Expenses” sublist with its total, remaining budget, place.
+-- Localized with doobs.tr(English text): translations registered by doobs.trInit below.
+
+--[[doobs-template
+kind = library
+order = 60
+icon = airplane
+color = teal
+name = Voyages | Trips
+summary = Destination, dates, budget, photos | Destination, dates, budget, photos
+]]
+
+-- French translations (English is the source language).
+doobs.trInit("fr", {
+  ["Trips"] = "Voyages",
+  ["Departure"] = "Départ",
+  ["Return"] = "Retour",
+  ["Expenses"] = "Dépenses",
+  ["Amount"] = "Montant",
+  ["Spent"] = "Dépensé",
+  ["Duration (days)"] = "Durée (jours)",
+  ["Item"] = "Poste",
+  ["Paid"] = "Payé",
+  ["Remaining"] = "Reste",
+  ["Accommodation"] = "Hébergement",
+  ["Place"] = "Lieu",
+  ["Memories"] = "Souvenirs",
+})
+local T = doobs.tr
+
+function parameters(ctx)
+  return doobs.parameters(T("Trips"), {
+    database = T("Trips"),
+    message = T("Destination, dates, budget, photos"),
+  })
+end
+
+function import(ctx)
+  local DEP, RET = T("Departure"), T("Return")
+  local BUDGET, EXPENSES, AMOUNT, SPENT = T("Budget"), T("Expenses"), T("Amount"), T("Spent")
+
+  local db = doobs.database()
+
+  local trips = db:addLibrary(T("Trips"), { icon = "airplane", color = "teal" })
+  trips:addField(T("Destination"))
+  trips:addField(T("Photo"), "media")
+  trips:addField(DEP, "date")
+  trips:addField(RET, "date")
+  trips:addField(T("Duration (days)"), "formula", { result = "number", formula = string.format("DAYS([%s]; [%s])", RET, DEP) })
+  trips:addField(BUDGET, "currency")
+  -- Sublist: one row per expense, totaled by the next formula.
+  trips:addField(EXPENSES, "sublist", { currency = "EUR", columns = {
+    { id = "poste", name = T("Item"), type = "text" },
+    { id = "date", name = T("Date"), type = "date" },
+    { id = "montant", name = AMOUNT, type = "currency" },
+    { id = "paye", name = T("Paid"), type = "boolean" } } })
+  trips:addField(SPENT, "formula", { result = "currency", formula = string.format("SUM([%s]; [%s])", EXPENSES, AMOUNT) })
+  trips:addField(T("Remaining"), "formula", { result = "currency", formula = string.format("[%s] - [%s]", BUDGET, SPENT) })
+  trips:addField(T("Accommodation"))
+  trips:addField(T("Place"), "location")
+  trips:addField(T("Memories"), "longtext")
+
+  return db
+end

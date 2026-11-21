@@ -1,0 +1,11 @@
+{
+  "file": "books.luaDoobs",
+  "title": {
+    "en": "Books",
+    "fr": "Livres"
+  },
+  "description": {
+    "en": "Catalog books with authors, genres, ISBNs, reading status, ratings and loans.",
+    "fr": "Cataloguez les livres avec auteurs, genres, ISBN, état de lecture, notes et prêts."
+  }
+}

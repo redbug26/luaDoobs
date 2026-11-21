@@ -1,0 +1,11 @@
+{
+  "file": "outdoor-journal.luaDoobs",
+  "title": {
+    "en": "Outdoor journal and weather",
+    "fr": "Journal de sorties et météo"
+  },
+  "description": {
+    "en": "Keep an outing journal linked to a 16-day Open-Meteo forecast, refreshed every three hours for the chosen location.",
+    "fr": "Tenez un journal de sorties relié aux prévisions Open-Meteo à 16 jours, actualisées toutes les trois heures pour le lieu choisi."
+  }
+}

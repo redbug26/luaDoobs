@@ -1,0 +1,11 @@
+{
+  "file": "project-management.luaDoobs",
+  "title": {
+    "en": "Project management",
+    "fr": "Gestion de projets"
+  },
+  "description": {
+    "en": "Manage projects with multiple tasks, documents and contacts, plus dates, status, budget, calculated task progress and costs.",
+    "fr": "Gérez les projets avec plusieurs tâches, documents et contacts, ainsi que dates, statuts, budgets, avancement et coûts calculés."
+  }
+}

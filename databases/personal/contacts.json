@@ -1,0 +1,11 @@
+{
+  "file": "contacts.luaDoobs",
+  "title": {
+    "en": "Contacts",
+    "fr": "Contacts"
+  },
+  "description": {
+    "en": "Manage names, companies, photos, phone numbers, email addresses, postal addresses, birthdays and notes.",
+    "fr": "Gérez les noms, sociétés, photos, téléphones, e-mails, adresses, anniversaires et notes."
+  }
+}

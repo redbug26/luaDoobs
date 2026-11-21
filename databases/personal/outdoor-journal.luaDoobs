@@ -1,0 +1,135 @@
+-- Outdoor journal and weather
+-- Open this file with Doobs: it creates a database with a linked library “Forecast”
+-- (Open-Meteo, public API with no key, refreshed every 3 hours) and an outing journal.
+--
+-- Localized with doobs.tr(English text): translations registered by doobs.trInit below.
+
+-- French translations (English is the source language).
+doobs.trInit("fr", {
+  ["Outdoor journal"] = "Journal de sorties",
+  ["Outings"] = "Sorties",
+  ["The 16-day forecast for the chosen place is read from Open-Meteo and refreshed every 3 hours."] = "Les prévisions à 16 jours du lieu choisi sont lues sur Open-Meteo et actualisées toutes les 3 heures.",
+  ["E.g. 50.47 for Namur."] = "Ex. 50.47 pour Namur.",
+  ["Weather"] = "Temps",
+  ["Done"] = "Faite",
+  ["Forecast"] = "Prévisions",
+  ["Weather forecast"] = "Prévision",
+  ["Rain (mm)"] = "Pluie (mm)",
+  ["Fine weather"] = "Beau temps",
+  ["Outing"] = "Sortie",
+  ["Place"] = "Lieu",
+  ["Upcoming"] = "À venir",
+})
+local T = doobs.tr
+
+-- Script of the linked library, saved in the database and run on every refresh. It runs on its own,
+-- so it registers its own translations. It appears verbatim in this file: approving this file approves it too.
+local FORECAST_SCRIPT = [==[
+-- Open-Meteo forecast
+doobs.trInit("fr", {
+  ["Clear sky"] = "Ciel dégagé",
+  ["Mainly clear"] = "Peu nuageux",
+  ["Partly cloudy"] = "Partiellement nuageux",
+  ["Overcast"] = "Couvert",
+  ["Fog"] = "Brouillard",
+  ["Rime fog"] = "Brouillard givrant",
+  ["Light drizzle"] = "Bruine faible",
+  ["Drizzle"] = "Bruine",
+  ["Dense drizzle"] = "Bruine forte",
+  ["Light rain"] = "Pluie faible",
+  ["Rain"] = "Pluie",
+  ["Heavy rain"] = "Pluie forte",
+  ["Light snow"] = "Neige faible",
+  ["Snow"] = "Neige",
+  ["Heavy snow"] = "Neige forte",
+  ["Light showers"] = "Averses faibles",
+  ["Showers"] = "Averses",
+  ["Violent showers"] = "Averses violentes",
+  ["Thunderstorm"] = "Orage",
+  ["Missing latitude and longitude parameters."] = "Paramètres latitude et longitude manquants.",
+})
+local T = doobs.tr
+local WEATHER = {   -- main WMO codes
+  [0] = T("Clear sky"), [1] = T("Mainly clear"), [2] = T("Partly cloudy"),
+  [3] = T("Overcast"), [45] = T("Fog"), [48] = T("Rime fog"),
+  [51] = T("Light drizzle"), [53] = T("Drizzle"), [55] = T("Dense drizzle"),
+  [61] = T("Light rain"), [63] = T("Rain"), [65] = T("Heavy rain"),
+  [71] = T("Light snow"), [73] = T("Snow"), [75] = T("Heavy snow"),
+  [80] = T("Light showers"), [81] = T("Showers"), [82] = T("Violent showers"),
+  [95] = T("Thunderstorm"),
+}
+
+function fetch(ctx)
+  local lat, lon = tonumber(ctx.params.latitude), tonumber(ctx.params.longitude)
+  if not lat or not lon then error(T("Missing latitude and longitude parameters.")) end
+  local data = doobs.http.getJSON("https://api.open-meteo.com/v1/forecast", { query = {
+    latitude = lat, longitude = lon, timezone = "auto",
+    daily = "temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code",
+    forecast_days = ctx.sample and 3 or 16,
+  } })
+  local d = type(data.daily) == "table" and data.daily or {}
+  local records = {}
+  for i, day in ipairs(type(d.time) == "table" and d.time or {}) do
+    -- Neutral keys: the database maps them to fields named in the app language.
+    records[#records + 1] = {
+      id = day,
+      weather = WEATHER[d.weather_code and d.weather_code[i]] or "—",
+      min = d.temperature_2m_min and d.temperature_2m_min[i],
+      max = d.temperature_2m_max and d.temperature_2m_max[i],
+      rain = d.precipitation_sum and d.precipitation_sum[i],
+    }
+    if ctx.sample and #records >= ctx.limit then break end
+  end
+  return records
+end
+]==]
+
+function parameters(ctx)
+  local form = doobs.parameters(T("Outdoor journal"), {
+    database = T("Outings"),
+    message = T("The 16-day forecast for the chosen place is read from Open-Meteo and refreshed every 3 hours."),
+  })
+  form:addNumber("latitude", T("Latitude"), { default = 50.47, required = true, help = T("E.g. 50.47 for Namur.") })
+  form:addNumber("longitude", T("Longitude"), { default = 4.87, required = true })
+  return form
+end
+
+function import(ctx)
+  local DATE, WEATHER, MAX = T("Date"), T("Weather"), T("Max (°C)")
+  local DONE = T("Done")
+
+  local db = doobs.database()
+
+  -- 1. Linked library: forecast, read-only, one record per day (key “id” = the date).
+  local forecast = db:addLinkedLibrary(T("Forecast"), {
+    kind = "lua",
+    script = FORECAST_SCRIPT,
+    key = "id",
+    params = { latitude = ctx.params.latitude or 50.47, longitude = ctx.params.longitude or 4.87 },
+    refresh = 180,            -- minutes
+    refreshOnOpen = true,
+  }, { icon = "cloud.sun", color = "cyan" })
+  forecast:addField(DATE, "date", { source = "id" })
+  forecast:addField(WEATHER, { source = "weather" })
+  forecast:addField(T("Min (°C)"), "decimal", { source = "min" })
+  forecast:addField(MAX, "decimal", { source = "max" })
+  forecast:addField(T("Rain (mm)"), "decimal", { source = "rain" })
+  forecast:setTitle(DATE)
+  forecast:setSubtitle(WEATHER)
+  forecast:setSort(DATE)
+  forecast:addCollection(T("Fine weather"), { { T("Rain (mm)"), "<", 1 }, { MAX, ">=", 15 } })
+
+  -- 2. Journal: each outing links to the matching forecast day (chosen in the record).
+  local outings = db:addLibrary(T("Outings"), { icon = "figure.hiking", color = "green" })
+  outings:addField(T("Outing"))
+  outings:addField(DATE, "date", { default = "@today" })
+  outings:addField(T("Weather forecast"), "relation", { library = forecast })
+  outings:addField(T("Place"), "location")
+  outings:addField(T("Distance (km)"), "decimal")
+  outings:addField(DONE, "boolean")
+  outings:addField(T("Notes"), "longtext")
+  outings:setSort("-" .. DATE)
+  outings:addCollection(T("Upcoming"), { { DONE, "=", false } })
+
+  return db
+end

@@ -1,0 +1,167 @@
+-- Open Library books
+-- Open this file with Doobs: it creates a book database from an Open Library subject
+-- (openlibrary.org, public API, no account): title, authors, year, cover and link.
+--
+-- Localized with doobs.tr(English text): translations registered by doobs.trInit below.
+
+-- French translations (English is the source language).
+doobs.trInit("fr", {
+  ["Open Library books"] = "Livres Open Library",
+  ["My books"] = "Mes livres",
+  ["Books"] = "Livres",
+  ["The most read books of the chosen subject are imported from Open Library. Covers are shown from the web, without being copied into the database."] = "Les livres les plus lus du sujet choisi sont importés depuis Open Library. Les couvertures sont affichées depuis le web, sans être copiées dans la base.",
+  ["Subject"] = "Sujet",
+  ["Other subject"] = "Autre sujet",
+  ["e.g. jules_verne"] = "ex. : jules_verne",
+  ["Optional: Open Library subject identifier, used instead of the chosen subject."] = "Facultatif : identifiant de sujet Open Library, utilisé à la place du sujet choisi.",
+  ["Number of books"] = "Nombre de livres",
+  ["Mark as read"] = "Marquer comme lus",
+  ["Subject: %s, %d books"] = "Sujet : %s, %d livres",
+  ["No book found for the subject “%s”."] = "Aucun livre trouvé pour le sujet « %s ».",
+  ["Title"] = "Titre",
+  ["Authors"] = "Auteurs",
+  ["Year"] = "Année",
+  ["Cover"] = "Couverture",
+  ["Open Library page"] = "Fiche Open Library",
+  ["Editions"] = "Éditions",
+  ["Read"] = "Lu",
+  ["Rating"] = "Note",
+  ["Comment"] = "Commentaire",
+  ["Age"] = "Âge",
+  ["Book"] = "Livre",
+  ["My reading"] = "Ma lecture",
+  ["To read"] = "À lire",
+  ["Classics"] = "Classiques",
+  ["Favorites"] = "Coups de cœur",
+  ["Science fiction"] = "Science-fiction",
+  ["Mystery"] = "Policier",
+  ["History"] = "Histoire",
+  ["Biography"] = "Biographie",
+  ["Cooking"] = "Cuisine",
+  ["Comics"] = "Bande dessinée",
+})
+local T = doobs.tr
+
+local S = {
+  subjects = { T("Science fiction"), T("Fantasy"), T("Mystery"), T("Romance"), T("History"), T("Biography"), T("Cooking"), T("Comics") },
+  title = T("Open Library books"),
+  database = T("My books"),
+  library = T("Books"),
+  message = T("The most read books of the chosen subject are imported from Open Library. Covers are shown from the web, without being copied into the database."),
+  subject = T("Subject"),
+  other = T("Other subject"),
+  otherPlaceholder = T("e.g. jules_verne"),
+  otherHelp = T("Optional: Open Library subject identifier, used instead of the chosen subject."),
+  count = T("Number of books"),
+  markRead = T("Mark as read"),
+  log = T("Subject: %s, %d books"),
+  none = T("No book found for the subject “%s”."),
+  bookTitle = T("Title"),
+  authors = T("Authors"),
+  year = T("Year"),
+  cover = T("Cover"),
+  page = T("Open Library page"),
+  editions = T("Editions"),
+  read = T("Read"),
+  rating = T("Rating"),
+  comment = T("Comment"),
+  age = T("Age"),
+  book = T("Book"),
+  myReading = T("My reading"),
+  toRead = T("To read"),
+  classics = T("Classics"),
+  favorites = T("Favorites"),
+}
+
+-- Open Library identifiers, in the order of S.subjects.
+local SLUGS = { "science_fiction", "fantasy", "mystery_and_detective_stories", "romance",
+                "history", "biography", "cooking", "comics" }
+
+function parameters(ctx)
+  local form = doobs.parameters(S.title, { database = S.database, message = S.message })
+  form:addChoice("sujet", S.subject, S.subjects, { default = S.subjects[1], required = true })
+  form:addText("autre", S.other, { placeholder = S.otherPlaceholder, help = S.otherHelp })
+  form:addInteger("nombre", S.count, { default = 50, required = true })
+  form:addBoolean("lus", S.markRead, { default = false })
+  return form
+end
+
+local function slugFor(p)
+  if p.autre and p.autre ~= "" then
+    return (p.autre:lower():gsub("%s+", "_")), p.autre
+  end
+  for i, label in ipairs(S.subjects) do
+    if label == p.sujet then return SLUGS[i], label end
+  end
+  return SLUGS[1], S.subjects[1]
+end
+
+function import(ctx)
+  local p = ctx.params
+  local slug, label = slugFor(p)
+  local limit = math.max(1, math.min(200, p.nombre or 50))
+  doobs.log(string.format(S.log, slug, limit))
+
+  -- Read the Open Library API first (before describing the database: an error creates nothing).
+  local data = doobs.http.getJSON("https://openlibrary.org/subjects/" .. doobs.url.encode(slug) .. ".json",
+                                  { query = { limit = limit }, timeout = 60 })
+  local works = type(data.works) == "table" and data.works or {}
+  if #works == 0 then error(string.format(S.none, label)) end
+
+  local db = doobs.database()
+
+  -- Library and fields.
+  -- Choices of the “Subject” field: the suggested subjects, plus the free subject if any.
+  local subjects = {}
+  for _, s in ipairs(S.subjects) do subjects[#subjects + 1] = s end
+  if p.autre and p.autre ~= "" then subjects[#subjects + 1] = label end
+  local books = db:addLibrary(S.library, { icon = "books.vertical", color = "brown" })
+  books:addField(S.bookTitle)
+  books:addField(S.authors)
+  books:addField(S.year, "integer")
+  books:addField(S.cover, "imageurl")
+  books:addField(S.subject, "choice", { choices = subjects })
+  books:addField(S.read, "boolean")
+  books:addField(S.rating, "rating")
+  books:addField(S.editions, "integer")
+  books:addField(S.page, "url")
+  books:addField(S.comment, "longtext")
+  books:addField(S.age, "formula", {
+    result = "number", formula = string.format('IF(ISBLANK([%s]); ""; YEAR(TODAY()) - [%s])', S.year, S.year) })
+
+  -- One record per book (null values from the API are left absent).
+  for _, w in ipairs(works) do
+    if type(w.title) == "string" then
+      local authors = {}
+      for _, a in ipairs(type(w.authors) == "table" and w.authors or {}) do
+        if type(a.name) == "string" then authors[#authors + 1] = a.name end
+      end
+      books:addRecord({
+        [S.bookTitle] = w.title,
+        [S.authors] = #authors > 0 and table.concat(authors, ", ") or nil,
+        [S.year] = type(w.first_publish_year) == "number" and w.first_publish_year or nil,
+        [S.cover] = type(w.cover_id) == "number" and string.format("https://covers.openlibrary.org/b/id/%d-M.jpg", w.cover_id) or nil,
+        [S.page] = type(w.key) == "string" and ("https://openlibrary.org" .. w.key) or nil,
+        [S.editions] = type(w.edition_count) == "number" and w.edition_count or nil,
+        [S.subject] = label,
+        [S.read] = p.lus == true,
+      })
+    end
+  end
+
+  -- Presentation.
+  books:setTitle(S.bookTitle)
+  books:setSubtitle(S.authors)
+  books:setSort(S.authors, S.year)
+  books:defaultForm({ columns = 3, theme = "paper" })
+    :addSection(S.book, { { S.bookTitle, 3 }, { S.authors, 2 }, S.year, S.subject, S.editions, S.age })
+    :addSection(S.cover, { S.cover })
+    :addSection(S.myReading, { S.read, S.rating, { S.page, 1 }, S.comment })
+
+  -- Collections.
+  books:addCollection(S.toRead, { { S.read, "=", false } })
+  books:addCollection(S.classics, { { S.year, "<", 1950 } })
+  books:addCollection(S.favorites, { { S.rating, ">=", 4 } })
+
+  return db
+end

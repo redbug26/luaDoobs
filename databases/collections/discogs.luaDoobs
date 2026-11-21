@@ -1,0 +1,557 @@
+-- Discogs: your record collection from Discogs
+--
+-- Creates a database read from your Discogs account through the official Discogs API (read only):
+--   • Artists: every artist of your records, with a link to their Discogs page;
+--   • Records: your collection (every copy, with its folder, rating, media and sleeve condition, notes)
+--     and, optionally, your wantlist, linked to their artists, with the cover, label, catalog number,
+--     format, genres and styles.
+--
+-- Access: a personal access token (discogs.com › Settings › Developers › Generate new token). It is
+-- kept in the Keychain of this device, never in the database; leave the field empty on the next runs.
+--
+-- Discogs accepts 60 requests per minute and 100 records per request: a few seconds for most
+-- collections. The tracklist, country and community rating of each release need one request per
+-- release (about 1 minute for 60 records): optional at creation, or later per record with the action
+-- “Load details from Discogs” (menu of a record).
+--
+-- To bring the database up to date later, run the action “Refresh from Discogs” (Scripts entry of the
+-- sidebar, or the database menu): it reads Discogs again and updates the records in place, keeping
+-- your own fields and records (see action(ctx) at the end of this file).
+
+doobs.trInit("fr", {
+  ["Discogs collection"] = "Collection Discogs",
+  ["My records"] = "Mes disques",
+  ["Your Discogs collection, read with a personal access token: discogs.com › Settings › Developers › Generate new token."] =
+    "Votre collection Discogs, lue avec un jeton d’accès personnel : discogs.com › Settings › Developers › Generate new token.",
+  ["Personal access token"] = "Jeton d’accès personnel",
+  ["Kept in the Keychain of this device. Leave empty to use the saved token."] =
+    "Gardé dans le Trousseau de cet appareil. Laissez vide pour utiliser le jeton enregistré.",
+  ["Wantlist"] = "Liste de recherche",
+  ["Also import the records of your wantlist."] = "Importe aussi les disques de votre liste de recherche.",
+  ["Tracklists"] = "Listes des pistes",
+  ["Tracklist, country and community rating of each release: one request per release (about 1 minute for 60 records)."] =
+    "Pistes, pays et note de la communauté de chaque édition : une requête par édition (environ 1 minute pour 60 disques).",
+  -- Libraries and fields
+  ["Artists"] = "Artistes",
+  ["Records"] = "Disques",
+  ["Name"] = "Nom",
+  ["Discogs ID"] = "Identifiant Discogs",
+  ["Discogs page"] = "Page Discogs",
+  ["Cover"] = "Pochette",
+  ["Title"] = "Titre",
+  ["Artist"] = "Artiste",
+  ["Year"] = "Année",
+  ["Label"] = "Label",
+  ["Catalog number"] = "Référence",
+  ["Format"] = "Format",
+  ["Format details"] = "Détails du format",
+  ["Genres"] = "Genres",
+  ["Styles"] = "Styles",
+  ["Folder"] = "Dossier",
+  ["In collection"] = "Dans la collection",
+  ["Wanted"] = "Recherché",
+  ["Rating"] = "Note",
+  ["Added"] = "Ajouté le",
+  ["Media condition"] = "État du disque",
+  ["Sleeve condition"] = "État de la pochette",
+  ["Notes"] = "Notes",
+  ["Other notes"] = "Autres notes",
+  ["Tracklist"] = "Pistes",
+  ["Country"] = "Pays",
+  ["Released"] = "Sortie",
+  ["Community rating"] = "Note de la communauté",
+  ["Release ID"] = "Identifiant de l’édition",
+  ["Copy"] = "Exemplaire",
+  ["Release"] = "Édition",
+  ["My copy"] = "Mon exemplaire",
+  ["Discogs"] = "Discogs",
+  -- Collections
+  ["Vinyl"] = "Vinyles",
+  ["CDs"] = "CD",
+  ["Top rated"] = "Mieux notés",
+  ["Added in the last 90 days"] = "Ajoutés ces 90 derniers jours",
+  -- Actions and messages
+  ["Refresh from Discogs"] = "Actualiser depuis Discogs",
+  ["Load details from Discogs"] = "Charger les détails depuis Discogs",
+  ["No Discogs token: enter your personal access token in the parameters."] =
+    "Aucun jeton Discogs : indiquez votre jeton d’accès personnel dans les paramètres.",
+  ["Discogs refused the token (error 401): create a new token on discogs.com and enter it in the parameters."] =
+    "Discogs a refusé le jeton (erreur 401) : créez un nouveau jeton sur discogs.com et indiquez-le dans les paramètres.",
+  ["Discogs refused the request (error %d): %s"] = "Discogs a refusé la requête (erreur %d) : %s",
+  ["Request limit reached: pause of %d s…"] = "Limite de requêtes atteinte : pause de %d s…",
+  ["Discogs still refuses the requests (limit per minute)."] = "Discogs refuse toujours les requêtes (limite par minute).",
+  ["Signed in to Discogs as %s."] = "Connecté à Discogs en tant que %s.",
+  ["Collection"] = "Collection",
+  ["%s: page %d/%d (%d/%d)"] = "%s : page %d/%d (%d/%d)",
+  ["Details: %d/%d"] = "Détails : %d/%d",
+  ["%d records in the collection, %d in the wantlist, %d artists."] = "%d disques dans la collection, %d dans la liste de recherche, %d artistes.",
+  ["Value of the collection (Discogs estimate): %s minimum, %s median, %s maximum."] =
+    "Valeur de la collection (estimation Discogs) : %s minimum, %s médiane, %s maximum.",
+  ["Covers come from discogs.com: a few records may have none."] =
+    "Les pochettes viennent de discogs.com : quelques disques peuvent ne pas en avoir.",
+  ["This database has no Discogs “Artists” and “Records” libraries."] =
+    "Cette base n’a pas les bibliothèques Discogs « Artistes » et « Disques ».",
+  ["This record has no Discogs release ID."] = "Cette fiche n’a pas d’identifiant d’édition Discogs.",
+})
+local T = doobs.tr
+
+local API = "https://api.discogs.com"
+local PAGE_SIZE = 100       -- maximum accepted by Discogs
+local CALL_INTERVAL = 1     -- seconds between two calls (60 calls per minute)
+local TOKEN_SECRET = "discogs.token"
+local CONDITIONS = { "Mint (M)", "Near Mint (NM or M-)", "Very Good Plus (VG+)", "Very Good (VG)",
+                     "Good Plus (G+)", "Good (G)", "Fair (F)", "Poor (P)" }
+
+-- Names of libraries and fields, computed once: the import and the actions use the same names.
+local LIB = { artists = T("Artists"), records = T("Records") }
+local F = {
+  name = T("Name"), discogsID = T("Discogs ID"), page = T("Discogs page"),
+  cover = T("Cover"), title = T("Title"), artist = T("Artist"), artists = T("Artists"), year = T("Year"),
+  label = T("Label"), catno = T("Catalog number"), format = T("Format"), formatDetails = T("Format details"),
+  genres = T("Genres"), styles = T("Styles"), folder = T("Folder"), owned = T("In collection"),
+  wanted = T("Wanted"), rating = T("Rating"), added = T("Added"), media = T("Media condition"),
+  sleeve = T("Sleeve condition"), notes = T("Notes"), otherNotes = T("Other notes"),
+  tracklist = T("Tracklist"), country = T("Country"), released = T("Released"),
+  community = T("Community rating"), release = T("Release ID"), url = T("Discogs"),
+}
+
+---------------------------------------------------------------------------------------------
+-- Discogs API client
+
+local api = { token = nil, called = false }
+
+local function token(given)
+  if type(given) == "string" and given:match("%S") then
+    given = given:gsub("^%s+", ""):gsub("%s+$", "")
+    doobs.setSecret(TOKEN_SECRET, given)
+    return given
+  end
+  local ok, saved = pcall(doobs.secret, TOKEN_SECRET)
+  if ok and type(saved) == "string" and saved ~= "" then return saved end
+  error(T("No Discogs token: enter your personal access token in the parameters."), 0)
+end
+
+-- GET on the API, JSON decoded; pauses between calls and when the limit per minute is reached.
+local function get(path, query)
+  for _ = 1, 6 do
+    if api.called then doobs.sleep(CALL_INTERVAL) end
+    api.called = true
+    local r = doobs.http.request{ method = "GET", url = API .. path, query = query, timeout = 60, headers = {
+      Authorization = "Discogs token=" .. api.token,
+      ["User-Agent"] = "DoobsDiscogs/1.0",
+      Accept = "application/vnd.discogs.v2.discogs+json",
+    } }
+    if r.status == 429 then
+      doobs.log(string.format(T("Request limit reached: pause of %d s…"), 60))
+      doobs.sleep(30)
+      doobs.sleep(30)
+    elseif r.status == 401 then
+      error(T("Discogs refused the token (error 401): create a new token on discogs.com and enter it in the parameters."), 0)
+    elseif not r.ok then
+      local ok, body = pcall(doobs.json.decode, r.body)
+      local message = ok and type(body) == "table" and body.message or (r.body or ""):sub(1, 200)
+      error(string.format(T("Discogs refused the request (error %d): %s"), r.status, tostring(message)), 0)
+    else
+      return doobs.json.decode(r.body)
+    end
+  end
+  error(T("Discogs still refuses the requests (limit per minute)."), 0)
+end
+
+-- Every page of a list (100 items per call); `key` names the list in the answer.
+local function getAll(path, key, label, query)
+  local items, page = {}, 1
+  while true do
+    local q = { page = page, per_page = PAGE_SIZE }
+    for k, v in pairs(query or {}) do q[k] = v end
+    local res = get(path, q)
+    for _, item in ipairs(type(res[key]) == "table" and res[key] or {}) do items[#items + 1] = item end
+    local p = type(res.pagination) == "table" and res.pagination or {}
+    local pages = tonumber(p.pages) or 1
+    doobs.log(string.format(T("%s: page %d/%d (%d/%d)"), label, page, math.max(pages, 1), #items,
+                            tonumber(p.items) or #items))
+    if page >= pages then return items end
+    page = page + 1
+  end
+end
+
+---------------------------------------------------------------------------------------------
+-- Conversions (a JSON null becomes nil; Discogs uses 0 or "" for “unknown”)
+
+local function text(v)
+  if type(v) == "number" then return tostring(v) end
+  if type(v) ~= "string" then return nil end
+  v = v:gsub("^%s+", ""):gsub("%s+$", "")
+  return v ~= "" and v or nil
+end
+
+local function positive(v)
+  v = tonumber(v)
+  return v and v > 0 and v or nil
+end
+
+local function day(v)
+  v = text(v)
+  return v and v:match("^(%d%d%d%d%-%d%d%-%d%d)") or nil
+end
+
+-- “Nirvana (2)” → “Nirvana”: Discogs numbers homonyms.
+local function plainName(v)
+  v = text(v)
+  return v and (v:gsub("%s+%(%d+%)$", "")) or nil
+end
+
+local function joined(list, sep)
+  local out = {}
+  for _, v in ipairs(type(list) == "table" and list or {}) do
+    local t = text(v)
+    if t then out[#out + 1] = t end
+  end
+  return #out > 0 and table.concat(out, sep or ", ") or nil
+end
+
+-- “Daft Punk & Pharrell Williams”: names (or name variations) with the joins given by Discogs.
+local function artistLine(artists)
+  local s = ""
+  for i, a in ipairs(artists or {}) do
+    s = s .. (text(a.anv) or plainName(a.name) or "")
+    if i < #artists then
+      local j = text(a.join)
+      s = s .. ((j == nil or j == ",") and ", " or (" " .. j .. " "))
+    end
+  end
+  return text(s)
+end
+
+-- “2×Vinyl, LP, Album, Reissue”.
+local function formatDetails(formats)
+  local parts = {}
+  for _, f in ipairs(formats or {}) do
+    local qty = tonumber(f.qty) or 1
+    local p = (qty > 1 and (qty .. "×") or "") .. (text(f.name) or "")
+    local d = joined(f.descriptions)
+    if d then p = p .. ", " .. d end
+    if text(f.text) then p = p .. " (" .. text(f.text) .. ")" end
+    parts[#parts + 1] = p
+  end
+  return joined(parts, " + ")
+end
+
+local function coverURL(info)
+  local url = text(info.cover_image) or text(info.thumb)
+  if not url or url:find("spacer.gif", 1, true) or not url:find("^https://") then return nil end
+  return url
+end
+
+local function trackLines(tracklist)
+  local lines = {}
+  for _, t in ipairs(type(tracklist) == "table" and tracklist or {}) do
+    if t.type_ == "heading" then
+      lines[#lines + 1] = "— " .. (text(t.title) or "") .. " —"
+    else
+      local line = ((text(t.position) and (text(t.position) .. "  ")) or "") .. (text(t.title) or "")
+      if text(t.duration) then line = line .. " (" .. text(t.duration) .. ")" end
+      lines[#lines + 1] = line
+    end
+  end
+  return #lines > 0 and table.concat(lines, "\n") or nil
+end
+
+---------------------------------------------------------------------------------------------
+-- Reading the account
+
+-- Everything the database needs: user, folders, custom fields, collection, wantlist.
+local function readCollection(o)
+  api.token = token(o.token)
+  local me = get("/oauth/identity")
+  local user = text(me.username) or error(T("Discogs refused the token (error 401): create a new token on discogs.com and enter it in the parameters."), 0)
+  doobs.log(string.format(T("Signed in to Discogs as %s."), user))
+  local base = "/users/" .. doobs.url.encode(user)
+  local data = { user = user, folders = {}, folderChoices = {}, fieldNames = {}, conditions = {} }
+  local folders = get(base .. "/collection/folders")
+  for _, f in ipairs(type(folders.folders) == "table" and folders.folders or {}) do
+    if tonumber(f.id) ~= 0 then   -- folder 0 is “All”
+      data.folders[f.id] = text(f.name)
+      data.folderChoices[#data.folderChoices + 1] = text(f.name)
+    end
+  end
+  -- Custom fields of the collection (Media Condition, Sleeve Condition, Notes, and the user's own).
+  local fields = get(base .. "/collection/fields")
+  for _, f in ipairs(type(fields.fields) == "table" and fields.fields or {}) do
+    local name = (text(f.name) or ""):lower()
+    data.fieldNames[f.id] = text(f.name)
+    if (name == "media condition" or name == "sleeve condition") and type(f.options) == "table" and #f.options > 0 then
+      data.conditions = f.options
+    end
+  end
+  if #data.conditions == 0 then data.conditions = CONDITIONS end
+  data.collection = getAll(base .. "/collection/folders/0/releases", "releases", T("Collection"),
+                           { sort = "artist", sort_order = "asc" })
+  data.wants = o.wantlist and getAll(base .. "/wants", "wants", T("Wantlist")) or {}
+  local ok, value = pcall(get, base .. "/collection/value")
+  if ok and type(value) == "table" and text(value.median) then
+    data.value = string.format(T("Value of the collection (Discogs estimate): %s minimum, %s median, %s maximum."),
+                               text(value.minimum) or "?", text(value.median), text(value.maximum) or "?")
+  end
+  return data
+end
+
+-- Tracklist, country, release date and community rating of one release.
+local function releaseDetails(id)
+  local r = get("/releases/" .. math.floor(id))
+  local community = type(r.community) == "table" and r.community or {}
+  local rating = type(community.rating) == "table" and community.rating or {}
+  return {
+    [F.tracklist] = trackLines(r.tracklist),
+    [F.country] = text(r.country),
+    [F.released] = text(r.released_formatted) or text(r.released),
+    [F.community] = positive(rating.average),
+  }
+end
+
+-- Values of a record (copy of the collection, or item of the wantlist), without its artists.
+local function recordValues(item, owned, data)
+  local info = type(item.basic_information) == "table" and item.basic_information or {}
+  local label = type(info.labels) == "table" and info.labels[1] or {}
+  local format = type(info.formats) == "table" and info.formats[1] or {}
+  local id = tonumber(item.id) or tonumber(info.id)
+  local v = {
+    [F.cover] = coverURL(info),
+    [F.title] = text(info.title),
+    [F.artist] = artistLine(info.artists),
+    [F.year] = positive(info.year),
+    [F.label] = plainName(label.name),
+    [F.catno] = text(label.catno) ~= "none" and text(label.catno) or nil,
+    [F.format] = text(format.name),
+    [F.formatDetails] = formatDetails(info.formats),
+    [F.genres] = joined(info.genres, " · "),   -- a genre may contain a comma (“Folk, World, & Country”)
+    [F.styles] = joined(info.styles, " · "),
+    [F.owned] = owned,
+    [F.wanted] = not owned,
+    [F.rating] = positive(item.rating),
+    [F.added] = day(item.date_added),
+    [F.release] = id,
+    [F.url] = id and ("https://www.discogs.com/release/" .. math.floor(id)) or nil,
+  }
+  if owned then
+    v[F.folder] = data.folders[item.folder_id]
+    -- Notes of a copy: { { field_id, value } }, named by the custom fields of the collection.
+    local others = {}
+    for _, n in ipairs(type(item.notes) == "table" and item.notes or {}) do
+      local name, value = (data.fieldNames[n.field_id] or ""):lower(), text(n.value)
+      if value then
+        if name == "media condition" then v[F.media] = value
+        elseif name == "sleeve condition" then v[F.sleeve] = value
+        elseif name == "notes" then v[F.notes] = value
+        else others[#others + 1] = (data.fieldNames[n.field_id] or "?") .. " : " .. value end
+      end
+    end
+    v[F.otherNotes] = #others > 0 and table.concat(others, "\n") or nil
+  else
+    v[F.notes] = text(item.notes)
+  end
+  return v
+end
+
+-- Artists of a record: { { id, name } }, without duplicates or the “Various” placeholder.
+local function artistsOf(item)
+  local info = type(item.basic_information) == "table" and item.basic_information or {}
+  local out, seen = {}, {}
+  for _, a in ipairs(type(info.artists) == "table" and info.artists or {}) do
+    local id = tonumber(a.id)
+    if id and id > 0 and id ~= 194 and not seen[id] then   -- 194 = “Various”
+      seen[id] = true
+      out[#out + 1] = { id = id, name = plainName(a.name) }
+    end
+  end
+  return out
+end
+
+---------------------------------------------------------------------------------------------
+-- Parameters and database
+
+function parameters(ctx)
+  return doobs.parameters(T("Discogs collection"), {
+    database = T("My records"),
+    message = T("Your Discogs collection, read with a personal access token: discogs.com › Settings › Developers › Generate new token."),
+  })
+    :addPassword("token", T("Personal access token"), { help = T("Kept in the Keychain of this device. Leave empty to use the saved token.") })
+    :addBoolean("wantlist", T("Wantlist"), { default = true, help = T("Also import the records of your wantlist.") })
+    :addBoolean("details", T("Tracklists"), { default = false,
+      help = T("Tracklist, country and community rating of each release: one request per release (about 1 minute for 60 records).") })
+end
+
+function import(ctx)
+  local p = ctx.params or {}
+  local wantDetails = p.details == true
+  doobs.timeout(1800)   -- 30 minutes: enough for about 1,500 tracklists at 60 requests per minute
+
+  -- 1. Read the account.
+  local data = readCollection({ token = p.token, wantlist = p.wantlist ~= false })
+  local db = doobs.database()
+
+  -- Formats met in the collection, for the choice list.
+  local formatChoices, seenFormat = {}, {}
+  for _, list in ipairs({ data.collection, data.wants }) do
+    for _, item in ipairs(list) do
+      local info = type(item.basic_information) == "table" and item.basic_information or {}
+      local f = type(info.formats) == "table" and info.formats[1] and text(info.formats[1].name)
+      if f and not seenFormat[f] then seenFormat[f] = true; formatChoices[#formatChoices + 1] = f end
+    end
+  end
+  table.sort(formatChoices)
+
+  -- 2. Artists.
+  local A = db:addLibrary(LIB.artists, { icon = "music.mic", color = "purple" })
+  A:addFields({ F.name, { F.discogsID, "integer" }, { F.page, "url" } })
+  local artistKeys = {}
+  local function artistKeysOf(item)
+    local keys = {}
+    for _, a in ipairs(artistsOf(item)) do
+      local key = tostring(a.id)
+      if not artistKeys[key] then
+        artistKeys[key] = true
+        A:addRecord({ [F.name] = a.name, [F.discogsID] = a.id, [F.page] = "https://www.discogs.com/artist/" .. a.id }, key)
+      end
+      keys[#keys + 1] = key
+    end
+    return #keys > 0 and keys or nil
+  end
+  A:setTitle(F.name)
+  A:setSort(F.name)
+  A:defaultForm({ columns = 2 }):addSection(T("Artist"), { { F.name, 2 }, F.discogsID, F.page })
+
+  -- 3. Records.
+  local R = db:addLibrary(LIB.records, { icon = "opticaldisc", color = "indigo" })
+  R:addFields({
+    { F.cover, "imageurl" },
+    F.title,
+    F.artist,
+    { F.artists, "relation", { library = A, many = true } },
+    { F.year, "integer" },
+    F.label, F.catno,
+    #formatChoices > 0 and { F.format, "choice", { choices = formatChoices } } or F.format,
+    F.formatDetails, F.genres, F.styles,
+    #data.folderChoices > 0 and { F.folder, "choice", { choices = data.folderChoices } } or F.folder,
+    { F.owned, "boolean" }, { F.wanted, "boolean" },
+    { F.rating, "rating", { max = 5 } },
+    { F.added, "date" },
+    { F.media, "choice", { choices = data.conditions } },
+    { F.sleeve, "choice", { choices = data.conditions } },
+    { F.notes, "longtext" }, { F.otherNotes, "longtext" },
+    { F.tracklist, "longtext" }, F.country, F.released, { F.community, "decimal" },
+    { F.release, "integer" }, { F.url, "url" },
+  })
+
+  local total, done = (#data.collection + #data.wants), 0
+  local details = {}   -- release id -> details (one request per distinct release)
+  local function addRecord(item, owned, key)
+    local values = recordValues(item, owned, data)
+    values[F.artists] = artistKeysOf(item)
+    if wantDetails and values[F.release] then
+      local id = values[F.release]
+      if not details[id] then
+        local ok, d = pcall(releaseDetails, id)
+        details[id] = ok and d or {}
+        if not ok then db:addWarning(tostring(d)) end
+        done = done + 1
+        if done % 10 == 0 then doobs.log(string.format(T("Details: %d/%d"), done, total)) end
+      end
+      for k, v in pairs(details[id]) do values[k] = v end
+    end
+    R:addRecord(values, key)
+  end
+  for _, item in ipairs(data.collection) do addRecord(item, true, "c-" .. tostring(item.instance_id)) end
+  for _, item in ipairs(data.wants) do addRecord(item, false, "w-" .. tostring(item.id)) end
+
+  R:setTitle(F.title)
+  R:setSubtitle(F.artist)
+  R:setSort(F.artist, F.year, F.title)
+  R:setGroup(F.artist)
+  R:setView("split", { gallery = F.cover })
+  R:hideFields(F.release)
+  if seenFormat["Vinyl"] then R:addCollection(T("Vinyl"), { { F.owned, "=", true }, { F.format, "=", "Vinyl" } }) end
+  if seenFormat["CD"] then R:addCollection(T("CDs"), { { F.owned, "=", true }, { F.format, "=", "CD" } }) end
+  if p.wantlist ~= false then R:addCollection(T("Wantlist"), { { F.wanted, "=", true } }) end
+  R:addCollection(T("Top rated"), { { F.rating, ">", 3 } })
+  R:addCollection(T("Added in the last 90 days"), { { F.added, "lastdays", 90 } })
+  R:defaultForm({ columns = 2 })
+    :addSection(T("Release"), { { F.cover, 2 }, { F.title, 2 }, { F.artists, 2 }, F.year, F.label, F.catno,
+                                F.format, { F.formatDetails, 2 }, F.genres, F.styles })
+    :addSection(T("My copy"), { F.owned, F.wanted, F.folder, F.rating, F.added, F.media, F.sleeve,
+                                { F.notes, 2 }, { F.otherNotes, 2 } })
+    :addSection(T("Tracklist"), { { F.tracklist, 2 }, F.country, F.released, F.community })
+    :addSection(T("Discogs"), { F.url, F.release })
+
+  -- Refresh later with this same script (Scripts entry, database menu, menu of a record).
+  db:addAction(T("Refresh from Discogs"), { scope = "database" })
+  db:addAction(T("Load details from Discogs"), { scope = "record", library = R })
+
+  doobs.log(string.format(T("%d records in the collection, %d in the wantlist, %d artists."),
+                          #data.collection, #data.wants, (function() local n = 0 for _ in pairs(artistKeys) do n = n + 1 end return n end)()))
+  if data.value then doobs.log(data.value) end
+  db:addWarning(T("Covers come from discogs.com: a few records may have none."))
+  return db
+end
+
+---------------------------------------------------------------------------------------------
+-- Actions: refresh of the database, details of one record.
+-- Refresh: artists are found by “Discogs ID”, records by “Release ID” (one record per copy: the n-th
+-- copy of a release matches the n-th record; the collection comes before the wantlist, so a wanted
+-- record you have bought becomes owned). Only the fields read from Discogs are written: your own
+-- fields, notes and records are kept. A record no longer in the collection or the wantlist is marked
+-- so, never deleted. Tracklists are not read again (one request per release): use “Load details”.
+
+local function hasField(ctx, library, field)
+  for _, l in ipairs(ctx.libraries or {}) do
+    if l.name == library then
+      for _, f in ipairs(l.fields or {}) do if f == field then return true end end
+    end
+  end
+  return false
+end
+
+local function refresh(ctx)
+  doobs.timeout(600)
+  local wantlist = hasField(ctx, LIB.records, F.wanted)
+  local data = readCollection({ wantlist = wantlist })
+  local c = doobs.changes()
+  local known = {}
+  local function addRecord(item, owned)
+    local ids = {}
+    for _, a in ipairs(artistsOf(item)) do
+      if not known[a.id] then
+        known[a.id] = true
+        c:upsert(LIB.artists, F.discogsID, { [F.name] = a.name, [F.discogsID] = a.id,
+                                             [F.page] = "https://www.discogs.com/artist/" .. a.id })
+      end
+      ids[#ids + 1] = a.id
+    end
+    local values = recordValues(item, owned, data)
+    if #ids > 0 then values[F.artists] = ids end
+    c:upsert(LIB.records, F.release, values)
+  end
+  for _, item in ipairs(data.collection) do addRecord(item, true) end
+  for _, item in ipairs(data.wants) do addRecord(item, false) end
+  -- Records of the database not read this time: no longer in the collection, no longer wanted.
+  c:untouched(LIB.records, { [F.owned] = false }, { [F.owned] = true })
+  if wantlist then c:untouched(LIB.records, { [F.wanted] = false }, { [F.wanted] = true }) end
+  local message = string.format(T("%d records in the collection, %d in the wantlist, %d artists."),
+                                #data.collection, #data.wants, (function() local n = 0 for _ in pairs(known) do n = n + 1 end return n end)())
+  return c:message(data.value and (message .. "\n" .. data.value) or message)
+end
+
+local function loadDetails(ctx)
+  local id = tonumber(ctx.record and ctx.record[F.release])
+  if not id then error(T("This record has no Discogs release ID."), 0) end
+  api.token = token(nil)
+  return doobs.changes():update(ctx.id, releaseDetails(id))
+end
+
+function action(ctx)
+  if not hasField(ctx, LIB.records, F.release) or not hasField(ctx, LIB.artists, F.discogsID) then
+    error(T("This database has no Discogs “Artists” and “Records” libraries."), 0)
+  end
+  if ctx.scope == "record" then return loadDetails(ctx) end
+  return refresh(ctx)
+end

@@ -1,0 +1,175 @@
+-- Medication tracker
+-- Open in Doobs to create Medicines, Treatments and Dose log. All start empty.
+-- No external medical data, dosing recommendations, prescriptions or alerts are generated.
+-- Enter instructions exactly as prescribed. Stock, thresholds and expiry dates are entered manually.
+-- Dose-log entries do not change stock or treatment instructions. Attach prescriptions in Doobs.
+
+doobs.trInit("fr", {
+  ["Medication tracker"] = "Suivi des médicaments",
+  ["Record medicines, prescribed treatments and doses manually. Transcribe prescribed instructions; this database does not calculate doses or create notifications."] = "Consignez les médicaments, traitements prescrits et prises manuellement. Recopiez les consignes prescrites ; cette base ne calcule pas les doses et ne crée pas de notifications.",
+  ["Medicines"] = "Médicaments",
+  ["Medicine"] = "Médicament",
+  ["Active ingredient"] = "Substance active",
+  ["Strength as labeled"] = "Dosage indiqué sur la boîte",
+  ["Form"] = "Forme",
+  ["Stock unit"] = "Unité de stock",
+  ["Stock remaining"] = "Stock restant",
+  ["Restock threshold"] = "Seuil de réapprovisionnement",
+  ["Expiry date"] = "Date de péremption",
+  ["Storage location"] = "Lieu de rangement",
+  ["Packaging photo"] = "Photo de la boîte",
+  ["Notes"] = "Notes",
+  ["Low stock"] = "Stock bas",
+  ["Past expiry date"] = "Date de péremption dépassée",
+  ["Stock"] = "Stock",
+  ["Treatments"] = "Traitements",
+  ["Treatment"] = "Traitement",
+  ["Person"] = "Personne",
+  ["Prescriber"] = "Prescripteur",
+  ["Planned"] = "Prévu",
+  ["Active"] = "Actif",
+  ["Paused"] = "Suspendu",
+  ["Completed"] = "Terminé",
+  ["Status"] = "Statut",
+  ["Start date"] = "Date de début",
+  ["End date"] = "Date de fin",
+  ["Prescribed dose"] = "Dose prescrite",
+  ["Prescribed schedule"] = "Horaires prescrits",
+  ["Prescribed instructions"] = "Consignes prescrites",
+  ["Prescription"] = "Ordonnance",
+  ["Active treatments"] = "Traitements actifs",
+  ["Prescription details"] = "Prescription",
+  ["Dose log"] = "Journal des prises",
+  ["Entry"] = "Entrée",
+  ["Scheduled at"] = "Date et heure prévues",
+  ["Recorded at"] = "Date et heure effectives",
+  ["Taken"] = "Prise",
+  ["Skipped"] = "Non prise",
+  ["Recorded dose"] = "Dose consignée",
+  ["Observations"] = "Observations",
+  ["Planned doses"] = "Prises prévues",
+  ["Skipped doses"] = "Prises non effectuées",
+  ["Dose record"] = "Prise",
+})
+local T = doobs.tr
+
+-- Reused labels, localized once.
+local N = {
+  medication_tracker = T("Medication tracker"),
+  introduction = T("Record medicines, prescribed treatments and doses manually. Transcribe prescribed instructions; this database does not calculate doses or create notifications."),
+  medicines = T("Medicines"),
+  medicine = T("Medicine"),
+  active_ingredient = T("Active ingredient"),
+  strength_as_labeled = T("Strength as labeled"),
+  form = T("Form"),
+  stock_unit = T("Stock unit"),
+  stock_remaining = T("Stock remaining"),
+  restock_threshold = T("Restock threshold"),
+  expiry_date = T("Expiry date"),
+  storage_location = T("Storage location"),
+  packaging_photo = T("Packaging photo"),
+  notes = T("Notes"),
+  low_stock = T("Low stock"),
+  past_expiry_date = T("Past expiry date"),
+  stock = T("Stock"),
+  treatments = T("Treatments"),
+  treatment = T("Treatment"),
+  person = T("Person"),
+  prescriber = T("Prescriber"),
+  planned = T("Planned"),
+  active = T("Active"),
+  paused = T("Paused"),
+  completed = T("Completed"),
+  status = T("Status"),
+  start_date = T("Start date"),
+  end_date = T("End date"),
+  prescribed_dose = T("Prescribed dose"),
+  prescribed_schedule = T("Prescribed schedule"),
+  prescribed_instructions = T("Prescribed instructions"),
+  prescription = T("Prescription"),
+  active_treatments = T("Active treatments"),
+  prescription_details = T("Prescription details"),
+  dose_log = T("Dose log"),
+  entry = T("Entry"),
+  scheduled_at = T("Scheduled at"),
+  recorded_at = T("Recorded at"),
+  taken = T("Taken"),
+  skipped = T("Skipped"),
+  recorded_dose = T("Recorded dose"),
+  observations = T("Observations"),
+  planned_doses = T("Planned doses"),
+  skipped_doses = T("Skipped doses"),
+  dose_record = T("Dose record"),
+}
+
+function parameters(ctx)
+  return doobs.parameters(N.medication_tracker, {
+    database = N.medication_tracker,
+    message = N.introduction,
+  })
+end
+
+function import(ctx)
+  local db = doobs.database()
+  local medicines = db:addLibrary(N.medicines, { icon = "pills", color = "blue" })
+  medicines:addField(N.medicine, "text")
+  medicines:addField(N.active_ingredient, "text")
+  medicines:addField(N.strength_as_labeled, "text")
+  medicines:addField(N.form, "text")
+  medicines:addField(N.stock_unit, "text")
+  medicines:addField(N.stock_remaining, "decimal")
+  medicines:addField(N.restock_threshold, "decimal")
+  medicines:addField(N.expiry_date, "date")
+  medicines:addField(N.storage_location, "text")
+  medicines:addField(N.packaging_photo, "media")
+  medicines:addField(N.notes, "longtext")
+  medicines:addField(N.low_stock, "formula", { result = "boolean", formula = string.format("AND(NOT(ISBLANK([%s])); NOT(ISBLANK([%s])); [%s] <= [%s])", N.stock_remaining, N.restock_threshold, N.stock_remaining, N.restock_threshold) })
+  medicines:addField(N.past_expiry_date, "formula", { result = "boolean", formula = string.format("AND(NOT(ISBLANK([%s])); [%s] < TODAY())", N.expiry_date, N.expiry_date) })
+  medicines:setTitle(N.medicine)
+  medicines:setSubtitle(N.strength_as_labeled)
+  medicines:setSort(N.medicine)
+  medicines:setView("table")
+  medicines:addCollection(N.low_stock, { { N.low_stock, "=", true } })
+  medicines:addCollection(N.past_expiry_date, { { N.past_expiry_date, "=", true } })
+  local form_medicines = medicines:defaultForm({ columns = 2 })
+  form_medicines:addSection(N.medicine, { N.medicine, N.active_ingredient, N.strength_as_labeled, N.form, N.packaging_photo })
+  form_medicines:addSection(N.stock, { N.stock_remaining, N.stock_unit, N.restock_threshold, N.low_stock, N.expiry_date, N.past_expiry_date, N.storage_location, N.notes })
+  local treatments = db:addLibrary(N.treatments, { icon = "cross.case", color = "green" })
+  treatments:addField(N.treatment, "text")
+  treatments:addField(N.medicine, "relation", { library = medicines })
+  treatments:addField(N.person, "text")
+  treatments:addField(N.prescriber, "text")
+  treatments:addField(N.status, "choice", { choices = { N.planned, N.active, N.paused, N.completed }, default = N.planned })
+  treatments:addField(N.start_date, "date")
+  treatments:addField(N.end_date, "date")
+  treatments:addField(N.prescribed_dose, "text")
+  treatments:addField(N.prescribed_schedule, "longtext")
+  treatments:addField(N.prescribed_instructions, "longtext")
+  treatments:addField(N.prescription, "media")
+  treatments:addField(N.notes, "longtext")
+  treatments:setTitle(N.treatment)
+  treatments:setSubtitle(N.person)
+  treatments:setSort(N.treatment)
+  treatments:setView("table")
+  treatments:addCollection(N.active_treatments, { { N.status, "=", N.active } })
+  local form_treatments = treatments:defaultForm({ columns = 2 })
+  form_treatments:addSection(N.treatment, { N.treatment, N.medicine, N.person, N.prescriber, N.status, N.start_date, N.end_date })
+  form_treatments:addSection(N.prescription_details, { N.prescribed_dose, N.prescribed_schedule, N.prescribed_instructions, N.prescription, N.notes })
+  local doses = db:addLibrary(N.dose_log, { icon = "checkmark.circle", color = "purple" })
+  doses:addField(N.entry, "text")
+  doses:addField(N.treatment, "relation", { library = treatments })
+  doses:addField(N.scheduled_at, "datetime")
+  doses:addField(N.recorded_at, "datetime")
+  doses:addField(N.status, "choice", { choices = { N.planned, N.taken, N.skipped }, default = N.planned })
+  doses:addField(N.recorded_dose, "text")
+  doses:addField(N.observations, "longtext")
+  doses:setTitle(N.entry)
+  doses:setSubtitle(N.scheduled_at)
+  doses:setSort("-" .. N.scheduled_at)
+  doses:setView("table")
+  doses:addCollection(N.planned_doses, { { N.status, "=", N.planned } })
+  doses:addCollection(N.skipped_doses, { { N.status, "=", N.skipped } })
+  local form_doses = doses:defaultForm({ columns = 2 })
+  form_doses:addSection(N.dose_record, { N.entry, N.treatment, N.scheduled_at, N.recorded_at, N.status, N.recorded_dose, N.observations })
+  return db
+end

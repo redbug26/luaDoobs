@@ -1,0 +1,11 @@
+{
+  "file": "adeps-points-verts.luaDoobs",
+  "title": {
+    "en": "ADEPS Points verts",
+    "fr": "Points verts ADEPS"
+  },
+  "description": {
+    "en": "Browse all ADEPS walking events from ODWB in an automatically refreshed linked library, including locations, accessibility, GPX links, archives and cancellations.",
+    "fr": "Consultez tous les rendez-vous ADEPS de la source ODWB dans une bibliothèque liée actualisée automatiquement : lieux, accessibilité, liens GPX, archives et annulations."
+  }
+}

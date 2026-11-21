@@ -1,0 +1,68 @@
+-- Official Doobs template: Books
+-- Title, author, genre, read, rating; “To read” and “On loan” collections.
+-- Localized with doobs.tr(English text): translations registered by doobs.trInit below.
+
+--[[doobs-template
+kind = library
+order = 10
+icon = books.vertical
+color = brown
+name = Livres | Books
+summary = Titre, auteur, genre, lu, note | Title, author, genre, read, rating
+]]
+
+-- French translations (English is the source language).
+doobs.trInit("fr", {
+  ["Books"] = "Livres",
+  ["Title, author, genre, read, rating"] = "Titre, auteur, genre, lu, note",
+  ["Read"] = "Lu",
+  ["Lent to"] = "Prêté à",
+  ["Title"] = "Titre",
+  ["Author"] = "Auteur",
+  ["Cover"] = "Couverture",
+  ["Novel"] = "Roman",
+  ["Mystery"] = "Policier",
+  ["Sci-fi"] = "SF",
+  ["Comics"] = "BD",
+  ["Nonfiction"] = "Essai",
+  ["Biography"] = "Biographie",
+  ["Children's books"] = "Jeunesse",
+  ["Year"] = "Année",
+  ["Rating"] = "Note",
+  ["Summary"] = "Résumé",
+  ["To read"] = "À lire",
+  ["On loan"] = "Prêtés",
+})
+local T = doobs.tr
+
+function parameters(ctx)
+  return doobs.parameters(T("Books"), {
+    database = T("Books"),
+    message = T("Title, author, genre, read, rating"),
+  })
+end
+
+function import(ctx)
+  local READ, LENT = T("Read"), T("Lent to")
+
+  local db = doobs.database()
+
+  local books = db:addLibrary(T("Books"), { icon = "books.vertical", color = "brown" })
+  books:addField(T("Title"))
+  books:addField(T("Author"))
+  books:addField(T("Cover"), "media")
+  books:addField(T("Genre"), "choice", { choices = {
+    T("Novel"), T("Mystery"), T("Sci-fi"), T("Fantasy"),
+    T("Comics"), T("Nonfiction"), T("Biography"), T("Children's books") } })
+  books:addField(T("Year"), "integer")
+  books:addField(T("ISBN"))
+  books:addField(READ, "boolean")
+  books:addField(T("Rating"), "rating")
+  books:addField(LENT)
+  books:addField(T("Summary"), "longtext")
+
+  books:addCollection(T("To read"), { { READ, "=", false } })
+  books:addCollection(T("On loan"), { { LENT, "notempty" } })
+
+  return db
+end

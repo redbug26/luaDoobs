@@ -1,0 +1,11 @@
+{
+  "file": "projects.luaDoobs",
+  "title": {
+    "en": "Projects",
+    "fr": "Projets"
+  },
+  "description": {
+    "en": "Track project descriptions, status, priority, dates, budget and time spent, with calculated days remaining.",
+    "fr": "Suivez les descriptions, statuts, priorités, dates, budgets et temps passé des projets, avec calcul des jours restants."
+  }
+}

@@ -1,0 +1,596 @@
+-- BDGest: your comic book collection from BDGest Online
+--
+-- Creates a database with two linked libraries, read from your BDGest Online account through the
+-- official BDGest server (MCP, read only):
+--   • Séries: every series of your collection, with BDGest statistics (volumes owned, missing,
+--     complete, followed, rating, cost to complete…);
+--   • Albums: the albums you own and, optionally, your wishlist, linked to their series, with the
+--     Bedetheque cover, publishing details and your copy (condition, purchase, value, read, signed…).
+--
+-- The first time, a BDGest page asks you to sign in and to authorize Doobs (scope “lecture”, read
+-- only). The tokens are then kept in the Keychain of this device and renewed silently: the next
+-- imports do not ask again. Nothing is sent to BDGest except read requests.
+--
+-- BDGest accepts 30 requests per minute and 50 albums per request: about 3 minutes for 2,000 albums
+-- and 800 wishlist albums (twice as long with the complete details). The last step is shown while the
+-- script runs; tap it to cancel.
+--
+-- To bring the database up to date later, run the action “Refresh from BDGest” (Scripts entry of the
+-- sidebar, or the database menu): it reads BDGest again and updates the records in place, keeping your
+-- own fields and records (see action(ctx) at the end of this file).
+--
+-- BDGest is a French service: field names stay in French, like its website; messages follow the app
+-- language (translations below).
+
+doobs.trInit("fr", {
+  ["BDGest collection"] = "Collection BDGest",
+  ["My comics"] = "Mes BD",
+  ["The first time, BDGest asks you to sign in and to authorize Doobs (read only). BDGest accepts 30 requests per minute: count about 3 minutes for 2,000 albums."] =
+    "La première fois, BDGest vous demande de vous connecter et d’autoriser Doobs (lecture seule). BDGest accepte 30 requêtes par minute : comptez environ 3 minutes pour 2 000 albums.",
+  ["Wishlist"] = "Liste de souhaits",
+  ["Also import the albums of your wishlist."] = "Importe aussi les albums de votre liste de souhaits.",
+  ["Covers"] = "Couvertures",
+  ["Cover images shown from bedetheque.com (not copied into the database)."] =
+    "Images de couverture affichées depuis bedetheque.com (non copiées dans la base).",
+  ["Complete details"] = "Détails complets",
+  ["Loans, storage, personal fields, number of readings: a second pass, twice as long."] =
+    "Prêts, rangement, champs personnels, nombre de lectures : une seconde lecture, deux fois plus longue.",
+  ["Signing in to BDGest…"] = "Connexion à BDGest…",
+  ["BDGest server: %s"] = "Serveur BDGest : %s",
+  ["BDGest refused the request (error %d)."] = "BDGest a refusé la requête (erreur %d).",
+  ["BDGest: %s"] = "BDGest : %s",
+  ["Unexpected answer from BDGest (%s)."] = "Réponse inattendue de BDGest (%s).",
+  ["Request limit reached: pause of %d s…"] = "Limite de requêtes atteinte : pause de %d s…",
+  ["BDGest still refuses the requests (limit per minute)."] = "BDGest refuse toujours les requêtes (limite par minute).",
+  ["Owned albums"] = "Albums possédés",
+  ["Owned albums (details)"] = "Albums possédés (détails)",
+  ["Series"] = "Séries",
+  ["%s: page %d/%d (%d/%d)"] = "%s : page %d/%d (%d/%d)",
+  ["%d owned albums, %d in the wishlist, %d series."] = "%d albums possédés, %d en liste de souhaits, %d séries.",
+  ["The two reads of the owned albums differ (%d / %d rows): details may be missing on some albums."] =
+    "Les deux lectures des albums possédés diffèrent (%d / %d lignes) : des détails peuvent manquer sur certains albums.",
+  ["Covers come from bedetheque.com: a few albums may have none."] =
+    "Les couvertures viennent de bedetheque.com : quelques albums peuvent ne pas en avoir.",
+  ["Refresh from BDGest"] = "Actualiser depuis BDGest",
+  ["This database has no BDGest “Séries” and “Albums” libraries."] =
+    "Cette base n’a pas les bibliothèques BDGest « Séries » et « Albums ».",
+})
+local T = doobs.tr
+
+local MCP_URL = "https://api.bdgest.com/mcp"
+-- BDGest refuses a redirect to the app (doobs-oauth://): the sign-in page comes back to a local address,
+-- received by Doobs on the device itself (loopback, as for a desktop application).
+local OAUTH = { issuer = "https://online.bdgest.com", scope = "lecture", resource = MCP_URL,
+                clientName = "Doobs", name = "bdgest", redirectURI = "http://127.0.0.1:8765/callback" }
+local COVER_URL = "https://www.bedetheque.com/media/Couvertures/Couv_%s.jpg"
+local PAGE_SIZE = 50      -- maximum accepted by BDGest
+local CALL_INTERVAL = 2   -- seconds between two calls (30 calls per minute)
+
+-- Columns requested on top of the default ones (id, series, volume, title, authors, publisher,
+-- date, price, rating, purchase, condition, read, collection). BDGest accepts 20 at most per request:
+-- the complete details need a second pass, merged row by row.
+local ALBUM_COLUMNS = {
+  "isbn", "cycle", "collection_editeur", "format", "nb_pages", "cote", "edition_originale", "integrale",
+  "edition_limitee", "genre", "origine", "langue", "couleur", "date_ajout", "valeur_estimee", "dedicace",
+  "date_dedicace", "commentaire", "date_lecture", "a_vendre",
+}
+local DETAIL_COLUMNS = {
+  "appreciation", "nb_lectures", "eo_possedee", "cote_perso", "perso1", "perso2", "perso3", "perso4",
+  "pret_en_cours", "date_pret", "nb_prets", "bibliotheque", "etagere", "range", "position",
+  "fiche_de_tete", "couverture_souple", "a_paraitre",
+}
+local SERIES_COLUMNS = {
+  "genre", "origine", "langue", "parution", "nb_tomes", "nb_albums", "note", "nb_votes",
+  "date_dernier_album", "scenario", "dessin", "suivie", "tomes_possedes", "complete", "tomes_manquants",
+  "cout_pour_completer", "albums_possedes", "albums_lus", "albums_wishlist", "date_dernier_achat",
+}
+local ALBUM_SORT = { { champ = "serie_titre", sens = "asc" }, { champ = "tome", sens = "asc" },
+                     { champ = "id", sens = "asc" } }
+
+---------------------------------------------------------------------------------------------
+-- BDGest MCP client (JSON-RPC over HTTP, answers in JSON or in a text/event-stream).
+
+local mcp = { nextID = 1, session = nil, token = nil, lastCall = nil }
+
+local function post(payload, retried)
+  local headers = {
+    Authorization = "Bearer " .. mcp.token,
+    Accept = "application/json, text/event-stream",
+    ["MCP-Protocol-Version"] = "2025-06-18",
+  }
+  if mcp.session then headers["Mcp-Session-Id"] = mcp.session end
+  local r = doobs.http.request{ method = "POST", url = MCP_URL, json = payload, headers = headers, timeout = 120 }
+  if r.status == 401 and not retried then
+    -- Token revoked or expired in the meantime: renew it (or sign in again) and retry once.
+    mcp.token = doobs.oauth.token(OAUTH, true)
+    return post(payload, true)
+  end
+  if not r.ok then error(string.format(T("BDGest refused the request (error %d)."), r.status), 0) end
+  if r.headers["mcp-session-id"] then mcp.session = r.headers["mcp-session-id"] end
+  if payload.id == nil or r.body == "" then return nil end
+  if (r.headers["content-type"] or ""):find("text/event-stream", 1, true) then
+    for line in r.body:gmatch("[^\r\n]+") do
+      local data = line:match("^data:%s*(.+)$")
+      if data then
+        local message = doobs.json.decode(data)
+        if message.id == payload.id then return message end
+      end
+    end
+    error(string.format(T("Unexpected answer from BDGest (%s)."), r.body:sub(1, 200)), 0)
+  end
+  return doobs.json.decode(r.body)
+end
+
+local function request(method, params)
+  local payload = { jsonrpc = "2.0", id = mcp.nextID, method = method, params = params }
+  mcp.nextID = mcp.nextID + 1
+  local message = post(payload)
+  if type(message) ~= "table" then error(string.format(T("Unexpected answer from BDGest (%s)."), method), 0) end
+  if message.error then
+    error(string.format(T("BDGest server: %s"), tostring(message.error.message or doobs.json.encode(message.error))), 0)
+  end
+  return message.result
+end
+
+local function connect()
+  doobs.log(T("Signing in to BDGest…"))
+  mcp.token = doobs.oauth.token(OAUTH)
+  request("initialize", { protocolVersion = "2025-06-18", capabilities = {},
+                          clientInfo = { name = "Doobs", version = "1.0" } })
+  post({ jsonrpc = "2.0", method = "notifications/initialized" })
+end
+
+-- Useful content of a tool result: structuredContent, otherwise the JSON of its text.
+local function payloadOf(result)
+  if result.structuredContent ~= nil then return result.structuredContent end
+  local texts = {}
+  for _, c in ipairs(result.content or {}) do
+    if c.type == "text" then texts[#texts + 1] = c.text end
+  end
+  local ok, value = pcall(doobs.json.decode, table.concat(texts, "\n"))
+  return ok and value or table.concat(texts, "\n")
+end
+
+-- Seconds to wait before the time given by a “quota_minute” message (“… after 14:03:27”).
+local function pauseUntil(message)
+  local h, m, s = tostring(message or ""):match("(%d%d):(%d%d):(%d%d)")
+  if not h then return 62 end
+  local now = os.date("*t")
+  local target = os.time({ year = now.year, month = now.month, day = now.day,
+                           hour = tonumber(h), min = tonumber(m), sec = tonumber(s) })
+  return math.max(1, math.min(120, target - os.time() + 1))
+end
+
+local function wait(seconds)
+  while seconds > 0 do
+    local step = math.min(seconds, 30)   -- doobs.sleep pauses 30 s at most
+    doobs.sleep(step)
+    seconds = seconds - step
+  end
+end
+
+local function call(tool, arguments)
+  for _ = 1, 10 do
+    if mcp.lastCall then wait(CALL_INTERVAL) end
+    mcp.lastCall = true
+    local result = request("tools/call", { name = tool, arguments = arguments or {} })
+    local content = result.structuredContent or {}
+    if not result.isError then return payloadOf(result) end
+    if content.erreur ~= "quota_minute" then
+      error(string.format(T("BDGest: %s"), tostring(content.message or content.erreur or payloadOf(result))), 0)
+    end
+    local pause = pauseUntil(content.message)
+    doobs.log(string.format(T("Request limit reached: pause of %d s…"), pause))
+    wait(pause)
+  end
+  error(T("BDGest still refuses the requests (limit per minute)."), 0)
+end
+
+-- Every page of a search (50 rows per call).
+local function fetchAll(tool, label, arguments)
+  local rows, page = {}, 1
+  while true do
+    local args = {}
+    for k, v in pairs(arguments) do args[k] = v end
+    args.limite, args.page = PAGE_SIZE, page
+    local res = call(tool, args)
+    if type(res) ~= "table" or type(res.lignes) ~= "table" then
+      error(string.format(T("Unexpected answer from BDGest (%s)."), tool), 0)
+    end
+    for _, row in ipairs(res.lignes) do rows[#rows + 1] = row end
+    local pages = tonumber(res.pages) or 1
+    doobs.log(string.format(T("%s: page %d/%d (%d/%d)"), label, page, math.max(pages, 1), #rows,
+                            tonumber(res.total) or #rows))
+    if page >= pages then return rows end
+    page = page + 1
+  end
+end
+
+-- Second pass merged with the first: same sort, matched by (collection, album, n-th occurrence).
+local function merge(first, second)
+  local function occurrences(rows)
+    local seen, out = {}, {}
+    for _, r in ipairs(rows) do
+      local k = tostring(r.collection_id) .. "/" .. tostring(r.id)
+      seen[k] = (seen[k] or 0) + 1
+      out[k .. "/" .. seen[k]] = r
+    end
+    return out
+  end
+  local extra, seen, matched = occurrences(second), {}, 0
+  for _, r in ipairs(first) do
+    local k = tostring(r.collection_id) .. "/" .. tostring(r.id)
+    seen[k] = (seen[k] or 0) + 1
+    local e = extra[k .. "/" .. seen[k]]
+    if e then
+      matched = matched + 1
+      for c, v in pairs(e) do if r[c] == nil then r[c] = v end end
+    end
+  end
+  return matched
+end
+
+---------------------------------------------------------------------------------------------
+-- Conversions
+
+local function text(v)
+  if v == nil or v == "" then return nil end
+  if type(v) == "table" then
+    -- Authors: { { id =, nom = }, … } -> "Name; Name".
+    local names = {}
+    for _, x in ipairs(v) do names[#names + 1] = type(x) == "table" and (x.nom or x.name) or tostring(x) end
+    return #names > 0 and table.concat(names, "; ") or nil
+  end
+  return tostring(v)
+end
+
+local function number(v) return tonumber(v) end
+
+local function bool(v)
+  if v == nil then return nil end
+  return v == true or v == 1 or v == "1" or v == "true"
+end
+
+local function day(v)
+  v = text(v)
+  return v and v:match("^%d%d%d%d%-%d%d%-%d%d") or nil
+end
+
+-- “12”, “12a”, “HS2”, “INT1” -> 12, 12, 2, 1: numeric order of the volumes within a series.
+local function volumeNumber(v)
+  return tonumber(tostring(v or ""):match("%d+"))
+end
+
+---------------------------------------------------------------------------------------------
+-- Parameters and database
+
+function parameters(ctx)
+  return doobs.parameters(T("BDGest collection"), {
+    database = T("My comics"),
+    message = T("The first time, BDGest asks you to sign in and to authorize Doobs (read only). BDGest accepts 30 requests per minute: count about 3 minutes for 2,000 albums."),
+  })
+    :addBoolean("wishlist", T("Wishlist"), { default = true, help = T("Also import the albums of your wishlist.") })
+    :addBoolean("covers", T("Covers"), { default = true, help = T("Cover images shown from bedetheque.com (not copied into the database).") })
+    :addBoolean("details", T("Complete details"), { default = false,
+      help = T("Loans, storage, personal fields, number of readings: a second pass, twice as long.") })
+end
+
+local FORMATS = { "Normal", "Grand format", "À l'italienne", "Comics", "Manga", "Poche", "Numérique", "Autre" }
+local ORIGINS = { "Franco-Belge", "Manga", "Comics", "Autre" }
+local STATUSES = { "Finie", "En cours", "One shot", "Suspendue", "Abandonnée" }
+local CONDITIONS = { "Neuf", "Très bon", "Bon", "Moyen", "Mauvais" }
+
+-- Reads everything from BDGest: owned albums (and their details), wishlist, series, collection names.
+local function readCollection(o)
+  connect()
+  local data = { warnings = {} }
+  local profile = call("ma_collection", {})
+  local owned = { { champ = "possede", op = "=", valeur = true } }
+  data.albums = fetchAll("chercher_albums", T("Owned albums"),
+    { filtres = owned, collection = "toutes", tri = ALBUM_SORT, colonnes = ALBUM_COLUMNS })
+  if o.details then
+    local details = fetchAll("chercher_albums", T("Owned albums (details)"),
+      { filtres = owned, collection = "toutes", tri = ALBUM_SORT, colonnes = DETAIL_COLUMNS })
+    local matched = merge(data.albums, details)
+    if matched ~= #data.albums or matched ~= #details then
+      data.warnings[#data.warnings + 1] = string.format(
+        T("The two reads of the owned albums differ (%d / %d rows): details may be missing on some albums."),
+        #data.albums, #details)
+    end
+  end
+  data.wishlist = {}
+  if o.wishlist then
+    data.wishlist = fetchAll("chercher_albums", T("Wishlist"),
+      { filtres = { { champ = "wishlist", op = "=", valeur = true } }, collection = "toutes", tri = ALBUM_SORT,
+        colonnes = ALBUM_COLUMNS })
+  end
+  data.series = fetchAll("chercher_series", T("Series"),
+    { filtres = { { champ = "dans_ma_collection", op = "=", valeur = true } }, collection = "toutes",
+      tri = { { champ = "titre", sens = "asc" } }, colonnes = SERIES_COLUMNS })
+  -- Names of the BDGest collections (“mybase”, “eBook”…).
+  data.collectionNames, data.collectionChoices = {}, {}
+  for _, c in ipairs(type(profile) == "table" and profile.collections or {}) do
+    local name = (c.libelle and c.libelle ~= "") and c.libelle or c.nom
+    data.collectionNames[c.id] = name
+    data.collectionChoices[#data.collectionChoices + 1] = name
+  end
+  return data
+end
+
+local function seriesValues(s)
+  return {
+    ["Titre"] = text(s.titre), ["Genre"] = text(s.genre), ["Origine"] = text(s.origine),
+    ["Langue"] = text(s.langue), ["Parution"] = text(s.parution),
+    ["Scénario"] = text(s.scenario), ["Dessin"] = text(s.dessin),
+    ["Tomes parus"] = number(s.nb_tomes), ["Albums parus"] = number(s.nb_albums),
+    ["Tomes possédés"] = number(s.tomes_possedes), ["Tomes manquants"] = number(s.tomes_manquants),
+    ["Albums possédés"] = number(s.albums_possedes), ["Albums lus"] = number(s.albums_lus),
+    ["Albums souhaités"] = number(s.albums_wishlist),
+    ["Complète"] = bool(s.complete), ["Suivie"] = bool(s.suivie),
+    ["Coût pour compléter"] = number(s.cout_pour_completer),
+    ["Note Bedetheque"] = number(s.note), ["Votes"] = number(s.nb_votes),
+    ["Dernier album"] = day(s.date_dernier_album), ["Dernier achat"] = day(s.date_dernier_achat),
+    ["Identifiant BDGest"] = number(s.id),
+  }
+end
+
+-- Values of an album; o = { covers, details, names (collection id -> name) }. The series is added by the caller.
+local function albumValues(a, isOwned, o)
+  local v = {
+    ["Couverture"] = o.covers and a.id and string.format(COVER_URL, tostring(a.id)) or nil,
+    ["Tome"] = text(a.tome), ["N° de tome"] = volumeNumber(a.tome),
+    ["Titre"] = text(a.titre), ["Cycle"] = text(a.cycle),
+    ["Scénario"] = text(a.scenario), ["Dessin"] = text(a.dessin), ["Couleurs"] = text(a.couleur),
+    ["Éditeur"] = text(a.editeur), ["Collection"] = text(a.collection_editeur),
+    ["Parution"] = text(a.date_parution), ["Format"] = text(a.format), ["Pages"] = number(a.nb_pages),
+    ["ISBN"] = text(a.isbn), ["Genre"] = text(a.genre), ["Origine"] = text(a.origine),
+    ["Langue"] = text(a.langue), ["Prix public"] = number(a.prix), ["Cote"] = number(a.cote),
+    ["Note Bedetheque"] = number(a.note), ["Votes"] = number(a.nb_votes),
+    ["Édition originale"] = bool(a.edition_originale), ["Intégrale"] = bool(a.integrale),
+    ["Édition limitée"] = bool(a.edition_limitee),
+    ["Possédé"] = isOwned, ["Liste de souhaits"] = not isOwned,
+    ["Collection BDGest"] = o.names[a.collection_id] or text(a.collection_nom),
+    ["Ajouté le"] = day(a.date_ajout),
+    ["Identifiant BDGest"] = number(a.id),
+  }
+  if isOwned then
+    v["État"] = text(a.etat)
+    v["Date d’achat"] = day(a.date_achat)
+    v["Prix d’achat"] = number(a.prix_achat)
+    v["Valeur estimée"] = number(a.valeur_estimee)
+    v["Lu"] = bool(a.lu)
+    v["Date de lecture"] = day(a.date_lecture)
+    v["Dédicace"] = bool(a.dedicace)
+    v["Date de dédicace"] = day(a.date_dedicace)
+    v["À vendre"] = bool(a.a_vendre)
+    v["Commentaire"] = text(a.commentaire)
+    if o.details then
+      v["Lectures"] = number(a.nb_lectures)
+      v["Appréciation"] = text(a.appreciation)
+      v["EO possédée"] = bool(a.eo_possedee)
+      v["Cote personnelle"] = number(a.cote_perso)
+      v["Prêté"] = bool(a.pret_en_cours)
+      v["Date de prêt"] = day(a.date_pret)
+      v["Prêts"] = number(a.nb_prets)
+      v["Bibliothèque"] = text(a.bibliotheque)
+      v["Étagère"] = text(a.etagere)
+      v["Position"] = text(a.position)
+      v["Rangé"] = bool(a.range)
+      v["Perso 1"] = text(a.perso1)
+      v["Perso 2"] = text(a.perso2)
+      v["Perso 3"] = text(a.perso3)
+      v["Perso 4"] = bool(a.perso4)
+      v["Réédition"] = a.fiche_de_tete ~= nil and not bool(a.fiche_de_tete) or nil
+      v["Couverture souple"] = bool(a.couverture_souple)
+      v["À paraître"] = bool(a.a_paraitre)
+    end
+  end
+  return v
+end
+
+function import(ctx)
+  local p = ctx.params or {}
+  local wantWishlist = p.wishlist ~= false
+  local wantCovers = p.covers ~= false
+  local wantDetails = p.details == true
+  doobs.timeout(1800)   -- 30 minutes: the request limit of BDGest makes a large collection slow
+
+  -- 1. Read everything from BDGest.
+  local data = readCollection({ wishlist = wantWishlist, details = wantDetails })
+  local albums, wishlist, series = data.albums, data.wishlist, data.series
+  local collectionChoices = data.collectionChoices
+  local db = doobs.database()
+  for _, w in ipairs(data.warnings) do db:addWarning(w) end
+
+  -- 2. Séries.
+  local S = db:addLibrary("Séries", { icon = "books.vertical", color = "orange" })
+  S:addFields({
+    "Titre",
+    "Genre",
+    { "Origine", "choice", { choices = ORIGINS } },
+    "Langue",
+    { "Parution", "choice", { choices = STATUSES } },
+    "Scénario", "Dessin",
+    { "Tomes parus", "integer" }, { "Albums parus", "integer" },
+    { "Tomes possédés", "integer" }, { "Tomes manquants", "integer" },
+    { "Albums possédés", "integer" }, { "Albums lus", "integer" }, { "Albums souhaités", "integer" },
+    { "Complète", "boolean" }, { "Suivie", "boolean" },
+    { "Coût pour compléter", "currency", { currency = "EUR" } },
+    { "Note Bedetheque", "decimal" }, { "Votes", "integer" },
+    { "Dernier album", "date" }, { "Dernier achat", "date" },
+    { "Identifiant BDGest", "integer" },
+  })
+  local seriesKeys = {}
+  for _, s in ipairs(series) do
+    local key = tostring(s.id)
+    seriesKeys[key] = true
+    S:addRecord(seriesValues(s), key)
+  end
+  -- Series known only through a wishlist album: a record with its title.
+  local function seriesKey(album)
+    if album.serie_id == nil then return nil end
+    local key = tostring(album.serie_id)
+    if not seriesKeys[key] then
+      seriesKeys[key] = true
+      S:addRecord({ ["Titre"] = text(album.serie_titre), ["Identifiant BDGest"] = number(album.serie_id) }, key)
+    end
+    return key
+  end
+  S:setTitle("Titre")
+  S:setSubtitle("Genre")
+  S:setSort("Titre")
+  S:addCollection("Suivies", { { "Suivie", "=", true } })
+  S:addCollection("À compléter", { { "Complète", "=", false }, { "Tomes manquants", ">", 0 } })
+  S:addCollection("Complètes", { { "Complète", "=", true } })
+  S:addCollection("En cours de parution", { { "Parution", "=", "En cours" } })
+  S:defaultForm({ columns = 2 })
+    :addSection("Série", { { "Titre", 2 }, "Genre", "Origine", "Langue", "Parution", "Scénario", "Dessin" })
+    :addSection("Ma collection", { "Tomes parus", "Albums parus", "Tomes possédés", "Tomes manquants",
+                                   "Albums possédés", "Albums lus", "Albums souhaités", "Complète", "Suivie",
+                                   "Coût pour compléter", "Dernier achat" })
+    :addSection("Bedetheque", { "Note Bedetheque", "Votes", "Dernier album", "Identifiant BDGest" })
+
+  -- 3. Albums.
+  local A = db:addLibrary("Albums", { icon = "book.closed", color = "brown" })
+  A:addFields({
+    { "Couverture", "imageurl" },
+    { "Série", "relation", { library = S } },
+    "Tome",
+    { "N° de tome", "integer", { hidden = true } },
+    "Titre",
+    { "Désignation", "formula", { result = "text",
+      formula = 'IF(ISBLANK([Tome]); [Titre]; "T" & [Tome] & " – " & [Titre])' } },
+    "Cycle", "Scénario", "Dessin", "Couleurs", "Éditeur", "Collection",
+    "Parution",
+    { "Format", "choice", { choices = FORMATS } },
+    { "Pages", "integer" },
+    "ISBN", "Genre",
+    { "Origine", "choice", { choices = ORIGINS } },
+    "Langue",
+    { "Prix public", "currency", { currency = "EUR" } },
+    { "Cote", "currency", { currency = "EUR" } },
+    { "Note Bedetheque", "decimal" }, { "Votes", "integer" },
+    { "Édition originale", "boolean" }, { "Intégrale", "boolean" }, { "Édition limitée", "boolean" },
+    { "Possédé", "boolean" }, { "Liste de souhaits", "boolean" },
+    #collectionChoices > 0 and { "Collection BDGest", "choice", { choices = collectionChoices } } or "Collection BDGest",
+    { "État", "choice", { choices = CONDITIONS } },
+    { "Date d’achat", "date" },
+    { "Prix d’achat", "currency", { currency = "EUR" } },
+    { "Valeur estimée", "currency", { currency = "EUR" } },
+    { "Ajouté le", "date" },
+    { "Lu", "boolean" }, { "Date de lecture", "date" },
+    { "Dédicace", "boolean" }, { "Date de dédicace", "date" },
+    { "À vendre", "boolean" },
+    { "Commentaire", "longtext" },
+  })
+  if wantDetails then
+    A:addFields({
+      { "Lectures", "integer" }, { "Appréciation", "longtext" },
+      { "EO possédée", "boolean" }, { "Cote personnelle", "currency", { currency = "EUR" } },
+      { "Prêté", "boolean" }, { "Date de prêt", "date" }, { "Prêts", "integer" },
+      "Bibliothèque", "Étagère", "Position", { "Rangé", "boolean" },
+      "Perso 1", "Perso 2", "Perso 3", { "Perso 4", "boolean" },
+      { "Réédition", "boolean" }, { "Couverture souple", "boolean" }, { "À paraître", "boolean" },
+    })
+  end
+  A:addField("Identifiant BDGest", "integer")
+
+  -- Keys: one record per copy (the same album may be owned twice, or in two collections).
+  local options = { covers = wantCovers, details = wantDetails, names = data.collectionNames }
+  local seen = {}
+  local function addAlbum(a, isOwned)
+    local base = (isOwned and "a" or "w") .. "-" .. tostring(a.collection_id) .. "-" .. tostring(a.id)
+    seen[base] = (seen[base] or 0) + 1
+    local values = albumValues(a, isOwned, options)
+    values["Série"] = seriesKey(a)
+    A:addRecord(values, base .. "-" .. seen[base])
+  end
+  for _, a in ipairs(albums) do addAlbum(a, true) end
+  for _, a in ipairs(wishlist) do addAlbum(a, false) end
+
+  A:setTitle("Désignation")
+  A:setSubtitle("Éditeur")
+  A:setSort("Série", "N° de tome", "Tome")
+  A:setGroup("Série")
+  A:setView("split", { gallery = "Couverture" })
+  A:addCollection("Possédés", { { "Possédé", "=", true } })
+  A:addCollection("À lire", { { "Possédé", "=", true }, { "Lu", "=", false } })
+  if wantWishlist then A:addCollection("Liste de souhaits", { { "Liste de souhaits", "=", true } }) end
+  A:addCollection("Éditions originales", { { "Possédé", "=", true }, { "Édition originale", "=", true } })
+  A:addCollection("Dédicacés", { { "Dédicace", "=", true } })
+  A:addCollection("À vendre", { { "À vendre", "=", true } })
+  A:addCollection("Achetés ces 90 derniers jours", { { "Date d’achat", "lastdays", 90 } })
+  if wantDetails then A:addCollection("Prêtés", { { "Prêté", "=", true } }) end
+
+  local form = A:defaultForm({ columns = 2 })
+    :addSection("Album", { { "Couverture", 2 }, { "Série", 2 }, "Tome", "Cycle", { "Titre", 2 },
+                           "Scénario", "Dessin", "Couleurs" })
+    :addSection("Édition", { "Éditeur", "Collection", "Parution", "Format", "Pages", "ISBN",
+                             "Édition originale", "Intégrale", "Édition limitée", "Prix public", "Cote" })
+    :addSection("Mon exemplaire", { "Possédé", "Liste de souhaits", "Collection BDGest", "État",
+                                    "Date d’achat", "Prix d’achat", "Valeur estimée", "Ajouté le", "À vendre" })
+    :addSection("Lecture", { "Lu", "Date de lecture", "Dédicace", "Date de dédicace", { "Commentaire", 2 } })
+  if wantDetails then
+    form:addSection("Détails", { "Lectures", "EO possédée", "Cote personnelle", "Réédition", "Couverture souple",
+                                 "À paraître", { "Appréciation", 2 } })
+        :addSection("Prêts et rangement", { "Prêté", "Date de prêt", "Prêts", "Rangé", "Bibliothèque",
+                                            "Étagère", "Position" })
+        :addSection("Champs personnels", { "Perso 1", "Perso 2", "Perso 3", "Perso 4" })
+  end
+  form:addSection("Bedetheque", { "Genre", "Origine", "Langue", "Note Bedetheque", "Votes", "Identifiant BDGest" })
+
+  -- Refresh later from the Scripts entry (or the database menu), with this same script.
+  db:addAction(T("Refresh from BDGest"), { scope = "database" })
+
+  doobs.log(string.format(T("%d owned albums, %d in the wishlist, %d series."), #albums, #wishlist, #series))
+  if wantCovers then db:addWarning(T("Covers come from bedetheque.com: a few albums may have none.")) end
+  return db
+end
+
+---------------------------------------------------------------------------------------------
+-- Refresh action: reads BDGest again and updates the database created above, in place.
+-- Series are found by “Identifiant BDGest”, albums by “Identifiant BDGest” + “Collection BDGest”
+-- (one record per copy). Only the fields read from BDGest are written: your own fields, notes and
+-- added records are kept. A wishlist album you have bought becomes owned; an album no longer owned
+-- or wished in BDGest is marked so (never deleted). The options follow the database: complete
+-- details if it has the “Lectures” field, wishlist if it has the “Liste de souhaits” field.
+
+local function hasField(ctx, library, field)
+  for _, l in ipairs(ctx.libraries or {}) do
+    if l.name == library then
+      for _, f in ipairs(l.fields or {}) do if f == field then return true end end
+    end
+  end
+  return false
+end
+
+function action(ctx)
+  if not hasField(ctx, "Albums", "Identifiant BDGest") or not hasField(ctx, "Séries", "Identifiant BDGest") then
+    error(T("This database has no BDGest “Séries” and “Albums” libraries."), 0)
+  end
+  doobs.timeout(1800)
+  local options = { covers = hasField(ctx, "Albums", "Couverture"), details = hasField(ctx, "Albums", "Lectures"),
+                    wishlist = hasField(ctx, "Albums", "Liste de souhaits") }
+  local data = readCollection(options)
+  options.names = data.collectionNames
+
+  local c = doobs.changes()
+  for _, s in ipairs(data.series) do c:upsert("Séries", "Identifiant BDGest", seriesValues(s)) end
+  local known = {}
+  for _, s in ipairs(data.series) do known[tostring(s.id)] = true end
+  local function addAlbum(a, isOwned)
+    if a.serie_id ~= nil and not known[tostring(a.serie_id)] then
+      known[tostring(a.serie_id)] = true
+      c:upsert("Séries", "Identifiant BDGest", { ["Titre"] = text(a.serie_titre), ["Identifiant BDGest"] = number(a.serie_id) })
+    end
+    local values = albumValues(a, isOwned, options)
+    values["Série"] = number(a.serie_id)
+    c:upsert("Albums", { "Identifiant BDGest", "Collection BDGest" }, values)
+  end
+  for _, a in ipairs(data.albums) do addAlbum(a, true) end
+  for _, a in ipairs(data.wishlist) do addAlbum(a, false) end
+  -- Albums of the database not read this time: no longer owned, no longer wished.
+  c:untouched("Albums", { ["Possédé"] = false }, { ["Possédé"] = true })
+  if options.wishlist then c:untouched("Albums", { ["Liste de souhaits"] = false }, { ["Liste de souhaits"] = true }) end
+  return c:message(string.format(T("%d owned albums, %d in the wishlist, %d series."), #data.albums, #data.wishlist, #data.series))
+end

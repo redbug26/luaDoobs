@@ -1,0 +1,11 @@
+{
+  "file": "movies.luaDoobs",
+  "title": {
+    "en": "Movies",
+    "fr": "Films"
+  },
+  "description": {
+    "en": "Catalog films with posters, directors, genres, running time, viewing status and ratings.",
+    "fr": "Cataloguez les films avec affiches, réalisateurs, genres, durée, état de visionnage et notes."
+  }
+}

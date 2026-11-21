@@ -1,0 +1,668 @@
+-- Freshservice: tickets and requesters of your service desk
+--
+-- Creates a database read from your Freshservice account through the official API (v2, read only):
+--   • Requesters: name, email, phones, job title, active;
+--   • Tickets: subject, requester (linked), agent and group (names), status, priority, urgency, impact,
+--     source, type, category, due dates, tags, description and a link to the ticket in Freshservice;
+--   • a report “Open tickets”: overview, by requester, by group, requester × group.
+--
+-- Access: your Freshservice domain (“yourcompany” for yourcompany.freshservice.com) and your API key
+-- (Freshservice › your profile › Profile settings › API key). The key is kept in the Keychain of this
+-- device, never in the database; leave the fields empty on the next runs.
+--
+-- Which tickets: those updated during the last months (12 by default), the predefined Freshservice
+-- filters (“New and my open”, “Watching”), or your own filter query, in the Freshservice syntax:
+-- status:2 AND priority:4, agent_id:null, tag:'vpn'… (status: 2 Open, 3 Pending, 4 Resolved,
+-- 5 Closed; priority: 1 Low to 4 Urgent). The database adds its own collections: open, pending,
+-- urgent, overdue, unassigned, resolved…
+--
+-- To bring the database up to date later, run the action “Refresh from Freshservice” (Scripts entry of
+-- the sidebar, or the database menu): it reads Freshservice again with the same choice of tickets and
+-- updates the records in place, keeping your own fields and records. “Refresh this ticket” (menu of a
+-- ticket) reads one ticket again, with its full description.
+
+doobs.trInit("fr", {
+  ["Freshservice tickets"] = "Tickets Freshservice",
+  ["Service desk"] = "Centre de services",
+  ["Tickets and requesters of your Freshservice account, read with your API key (profile › Profile settings › API key)."] =
+    "Tickets et demandeurs de votre compte Freshservice, lus avec votre clé d’API (profil › Profile settings › API key).",
+  ["Domain"] = "Domaine",
+  ["yourcompany (for yourcompany.freshservice.com)"] = "votreentreprise (pour votreentreprise.freshservice.com)",
+  ["API key"] = "Clé d’API",
+  ["Kept in the Keychain of this device. Leave empty to use the saved key."] =
+    "Gardée dans le Trousseau de cet appareil. Laissez vide pour utiliser la clé enregistrée.",
+  ["Tickets"] = "Tickets",
+  ["Updated during the last months"] = "Modifiés ces derniers mois",
+  ["New and my open"] = "Nouveaux et mes tickets ouverts",
+  ["Watching"] = "Suivis",
+  ["Filter query"] = "Requête de filtre",
+  ["Months"] = "Mois",
+  ["Tickets updated during this number of months (choice “Updated during the last months”)."] =
+    "Tickets modifiés pendant ce nombre de mois (choix « Modifiés ces derniers mois »).",
+  ["Freshservice syntax, for the choice “Filter query”: status:2 AND priority:4 (300 tickets at most)."] =
+    "Syntaxe Freshservice, pour le choix « Requête de filtre » : status:2 AND priority:4 (300 tickets au plus).",
+  ["All requesters"] = "Tous les demandeurs",
+  ["Otherwise, only the requesters of the imported tickets."] = "Sinon, seulement les demandeurs des tickets importés.",
+  -- Libraries and fields
+  ["Requesters"] = "Demandeurs",
+  ["Name"] = "Nom",
+  ["First name"] = "Prénom",
+  ["Last name"] = "Nom de famille",
+  ["Email"] = "E-mail",
+  ["Work phone"] = "Téléphone professionnel",
+  ["Mobile"] = "Mobile",
+  ["Job title"] = "Fonction",
+  ["Active"] = "Actif",
+  ["Freshservice ID"] = "Identifiant Freshservice",
+  ["Created"] = "Créé le",
+  ["Updated"] = "Modifié le",
+  ["Number"] = "Numéro",
+  ["Subject"] = "Objet",
+  ["Requester"] = "Demandeur",
+  ["Requester ID"] = "Identifiant du demandeur",
+  ["Status"] = "État",
+  ["Priority"] = "Priorité",
+  ["Priority level"] = "Niveau de priorité",
+  ["Urgency"] = "Urgence",
+  ["Impact"] = "Impact",
+  ["Source"] = "Source",
+  ["Type"] = "Type",
+  ["Category"] = "Catégorie",
+  ["Subcategory"] = "Sous-catégorie",
+  ["Item"] = "Élément",
+  ["Due by"] = "Échéance",
+  ["First response due"] = "Première réponse attendue",
+  ["Escalated ticket"] = "Escaladé",
+  ["Assigned"] = "Assigné",
+  ["Agent ID"] = "Identifiant de l’agent",
+  ["Group ID"] = "Identifiant du groupe",
+  ["Tags"] = "Étiquettes",
+  ["Description"] = "Description",
+  ["Other fields"] = "Autres champs",
+  ["Agent"] = "Agent",
+  ["Group"] = "Groupe",
+  ["Requester name"] = "Nom du demandeur",
+  ["Agents"] = "Agents",
+  ["Groups"] = "Groupes",
+  ["Assignment"] = "Attribution",
+  ["Agents are not readable with this API key (%s): tickets keep the agent ID only."] =
+    "Les agents ne sont pas lisibles avec cette clé d’API (%s) : les tickets gardent seulement l’identifiant de l’agent.",
+  ["Groups are not readable with this API key (%s): tickets keep the group ID only."] =
+    "Les groupes ne sont pas lisibles avec cette clé d’API (%s) : les tickets gardent seulement l’identifiant du groupe.",
+  -- Report
+  ["Tickets not resolved or closed: open, pending and custom statuses."] =
+    "Tickets ni résolus ni fermés : ouverts, en attente et états personnalisés.",
+  ["Overview"] = "Vue d’ensemble",
+  ["Not resolved"] = "Non résolus",
+  ["Urgent and high"] = "Urgents et hauts",
+  ["Escalated"] = "Escaladés",
+  ["By requester"] = "Par demandeur",
+  ["By group"] = "Par groupe",
+  ["By requester and group"] = "Par demandeur et par groupe",
+  ["Freshservice"] = "Freshservice",
+  ["Ticket"] = "Ticket",
+  ["Tracking"] = "Suivi",
+  ["Classification"] = "Classement",
+  ["Contact"] = "Contact",
+  -- Choices
+  ["Open"] = "Ouvert",
+  ["Pending"] = "En attente",
+  ["Resolved"] = "Résolu",
+  ["Closed"] = "Fermé",
+  ["Low"] = "Basse",
+  ["Medium"] = "Moyenne",
+  ["High"] = "Haute",
+  ["Urgent"] = "Urgente",
+  ["Phone"] = "Téléphone",
+  ["Portal"] = "Portail",
+  ["Chat"] = "Chat",
+  ["Feedback widget"] = "Widget de commentaires",
+  ["Walk-up"] = "Au comptoir",
+  ["Status %d"] = "État %d",
+  ["Source %d"] = "Source %d",
+  -- Collections
+  ["Open tickets"] = "Tickets ouverts",
+  ["Pending tickets"] = "Tickets en attente",
+  ["Urgent and high, not resolved"] = "Urgents et hauts, non résolus",
+  ["Unassigned"] = "Non assignés",
+  ["Escalated tickets"] = "Tickets escaladés",
+  ["Resolved or closed"] = "Résolus ou fermés",
+  ["Created in the last 7 days"] = "Créés ces 7 derniers jours",
+  ["Active requesters"] = "Demandeurs actifs",
+  -- Actions and messages
+  ["Refresh from Freshservice"] = "Actualiser depuis Freshservice",
+  ["Refresh this ticket"] = "Actualiser ce ticket",
+  ["No Freshservice domain: enter it in the parameters."] = "Aucun domaine Freshservice : indiquez-le dans les paramètres.",
+  ["No Freshservice API key: enter it in the parameters."] = "Aucune clé d’API Freshservice : indiquez-la dans les paramètres.",
+  ["Freshservice refused the API key (error %d): check it in your profile settings."] =
+    "Freshservice a refusé la clé d’API (erreur %d) : vérifiez-la dans les réglages de votre profil.",
+  ["Freshservice refused the request (error %d): %s"] = "Freshservice a refusé la requête (erreur %d) : %s",
+  ["Request limit reached: pause of %d s…"] = "Limite de requêtes atteinte : pause de %d s…",
+  ["Freshservice still refuses the requests (limit per minute)."] = "Freshservice refuse toujours les requêtes (limite par minute).",
+  ["Empty filter query: enter one, or choose another kind of tickets."] =
+    "Requête de filtre vide : saisissez-en une, ou choisissez un autre type de tickets.",
+  ["%s: page %d (%d)"] = "%s : page %d (%d)",
+  ["The filter query returns %d tickets: only the first %d are read (limit of Freshservice)."] =
+    "La requête de filtre renvoie %d tickets : seuls les %d premiers sont lus (limite de Freshservice).",
+  ["%d requesters of tickets are not in the requesters list (agents, deleted requesters): their tickets keep the requester ID only."] =
+    "%d demandeurs de tickets ne figurent pas dans la liste des demandeurs (agents, demandeurs supprimés) : leurs tickets gardent seulement l’identifiant du demandeur.",
+  ["%d tickets, %d requesters."] = "%d tickets, %d demandeurs.",
+  ["This database has no Freshservice “Tickets” and “Requesters” libraries."] =
+    "Cette base n’a pas les bibliothèques Freshservice « Tickets » et « Demandeurs ».",
+  ["This record has no ticket number."] = "Cette fiche n’a pas de numéro de ticket.",
+})
+local T = doobs.tr
+
+local PAGE_SIZE = 100          -- maximum accepted by Freshservice lists
+local FILTER_PAGES = 10        -- the filter endpoint returns 10 pages at most
+local SECRET = { key = "freshservice.key", domain = "freshservice.domain", choice = "freshservice.tickets",
+                 query = "freshservice.query", months = "freshservice.months", all = "freshservice.allRequesters" }
+
+local CHOICE = { recent = T("Updated during the last months"), mine = T("New and my open"),
+                 watching = T("Watching"), query = T("Filter query") }
+local STATUS = { [2] = T("Open"), [3] = T("Pending"), [4] = T("Resolved"), [5] = T("Closed") }
+local PRIORITY = { [1] = T("Low"), [2] = T("Medium"), [3] = T("High"), [4] = T("Urgent") }
+local LEVEL = { [1] = T("Low"), [2] = T("Medium"), [3] = T("High") }
+local SOURCE = { [1] = T("Email"), [2] = T("Portal"), [3] = T("Phone"), [4] = T("Chat"),
+                 [5] = T("Feedback widget"), [9] = T("Walk-up") }
+
+-- Names of libraries and fields, computed once: the import and the actions use the same names.
+local LIB = { tickets = T("Tickets"), requesters = T("Requesters") }
+local F = {
+  name = T("Name"), first = T("First name"), last = T("Last name"), email = T("Email"), work = T("Work phone"),
+  mobile = T("Mobile"), job = T("Job title"), active = T("Active"), fsid = T("Freshservice ID"),
+  created = T("Created"), updated = T("Updated"),
+  number = T("Number"), subject = T("Subject"), requester = T("Requester"), requesterID = T("Requester ID"),
+  status = T("Status"), priority = T("Priority"), level = T("Priority level"), urgency = T("Urgency"), impact = T("Impact"),
+  source = T("Source"), type = T("Type"), category = T("Category"), subcategory = T("Subcategory"),
+  item = T("Item"), due = T("Due by"), frDue = T("First response due"), escalated = T("Escalated ticket"),
+  assigned = T("Assigned"), agent = T("Agent ID"), group = T("Group ID"), tags = T("Tags"),
+  description = T("Description"), other = T("Other fields"), url = T("Freshservice"),
+  agentName = T("Agent"), groupName = T("Group"), requesterName = T("Requester name"),
+}
+
+---------------------------------------------------------------------------------------------
+-- Settings kept in the Keychain (shared by the import and its actions)
+
+local function saved(name)
+  local ok, value = pcall(doobs.secret, name)
+  return ok and type(value) == "string" and value ~= "" and value or nil
+end
+
+local function keep(name, value)
+  pcall(doobs.setSecret, name, value)
+end
+
+local function trim(v)
+  return type(v) == "string" and (v:gsub("^%s+", ""):gsub("%s+$", "")) or nil
+end
+
+-- “yourcompany”, “yourcompany.freshservice.com” or “https://yourcompany.freshservice.com/…” → host.
+local function hostOf(domain)
+  domain = trim(domain)
+  if not domain or domain == "" then return nil end
+  domain = domain:lower():gsub("^https?://", ""):gsub("/.*$", "")
+  if not domain:find("%.") then domain = domain .. ".freshservice.com" end
+  return domain
+end
+
+---------------------------------------------------------------------------------------------
+-- Freshservice API client
+
+local api = { host = nil, auth = nil }
+
+local function connect(o)
+  local host = hostOf(o.domain)
+  if host then keep(SECRET.domain, host) else host = saved(SECRET.domain) end
+  if not host then error(T("No Freshservice domain: enter it in the parameters."), 0) end
+  local key = trim(o.key)
+  if key and key ~= "" then keep(SECRET.key, key) else key = saved(SECRET.key) end
+  if not key then error(T("No Freshservice API key: enter it in the parameters."), 0) end
+  api.host = host
+  api.auth = "Basic " .. doobs.base64.encode(key .. ":X")   -- the API key is the user name, “X” the password
+end
+
+-- GET on the API, JSON decoded; waits when the limit per minute is reached (HTTP 429, Retry-After).
+local function get(path, query)
+  for _ = 1, 6 do
+    local r = doobs.http.request{ method = "GET", url = "https://" .. api.host .. "/api/v2" .. path, query = query,
+                                  timeout = 60, headers = { Authorization = api.auth, Accept = "application/json" } }
+    if r.status == 429 then
+      local pause = math.max(1, math.min(60, tonumber(r.headers["retry-after"]) or 60))
+      doobs.log(string.format(T("Request limit reached: pause of %d s…"), pause))
+      while pause > 0 do
+        local step = math.min(pause, 30)
+        doobs.sleep(step)
+        pause = pause - step
+      end
+    elseif r.status == 401 or r.status == 403 then
+      error(string.format(T("Freshservice refused the API key (error %d): check it in your profile settings."), r.status), 0)
+    elseif not r.ok then
+      local ok, body = pcall(doobs.json.decode, r.body)
+      local message = ok and type(body) == "table" and (body.description or body.message) or (r.body or ""):sub(1, 200)
+      if ok and type(body) == "table" and type(body.errors) == "table" and body.errors[1] then
+        message = tostring(message) .. " " .. doobs.json.encode(body.errors)
+      end
+      error(string.format(T("Freshservice refused the request (error %d): %s"), r.status, tostring(message)), 0)
+    else
+      return doobs.json.decode(r.body)
+    end
+  end
+  error(T("Freshservice still refuses the requests (limit per minute)."), 0)
+end
+
+-- Every page of a list: 100 items per page, until a page is not full.
+local function getAll(path, key, label, query)
+  local items, page = {}, 1
+  while true do
+    local q = { page = page, per_page = PAGE_SIZE }
+    for k, v in pairs(query or {}) do q[k] = v end
+    local res = get(path, q)
+    local list = type(res[key]) == "table" and res[key] or {}
+    for _, item in ipairs(list) do items[#items + 1] = item end
+    doobs.log(string.format(T("%s: page %d (%d)"), label, page, #items))
+    if #list < PAGE_SIZE then return items end
+    page = page + 1
+  end
+end
+
+-- Tickets of a filter query (Freshservice syntax), 10 pages at most.
+local function filterTickets(queryText, warnings)
+  local items, page, total = {}, 1, nil
+  while page <= FILTER_PAGES do
+    local res = get("/tickets/filter", { query = '"' .. queryText .. '"', page = page })
+    local list = type(res.tickets) == "table" and res.tickets or {}
+    total = tonumber(res.total) or total
+    for _, item in ipairs(list) do items[#items + 1] = item end
+    doobs.log(string.format(T("%s: page %d (%d)"), LIB.tickets, page, #items))
+    if #list == 0 or (total and #items >= total) then break end
+    page = page + 1
+  end
+  if total and total > #items then
+    warnings[#warnings + 1] = string.format(T("The filter query returns %d tickets: only the first %d are read (limit of Freshservice)."), total, #items)
+  end
+  return items
+end
+
+---------------------------------------------------------------------------------------------
+-- Conversions (a JSON null becomes nil)
+
+local function text(v)
+  if type(v) == "number" then return tostring(v) end
+  if type(v) ~= "string" then return nil end
+  v = trim(v)
+  return v ~= "" and v or nil
+end
+
+local function timestamp(v)
+  v = text(v)
+  return v and v:match("^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%d") and v or nil
+end
+
+local function joined(list)
+  local out = {}
+  for _, v in ipairs(type(list) == "table" and list or {}) do
+    local t = text(v)
+    if t then out[#out + 1] = t end
+  end
+  return #out > 0 and table.concat(out, ", ") or nil
+end
+
+-- Custom fields: { name = value } → “name: value” lines (empty values left out).
+local function customLines(fields)
+  local lines = {}
+  for k, v in pairs(type(fields) == "table" and fields or {}) do
+    local value = type(v) == "boolean" and (v and "✓" or nil) or text(v)
+    if value then lines[#lines + 1] = tostring(k):gsub("_", " ") .. " : " .. value end
+  end
+  table.sort(lines)
+  return #lines > 0 and table.concat(lines, "\n") or nil
+end
+
+local function statusName(s, names)
+  s = tonumber(s)
+  return s and (names[s] or STATUS[s] or string.format(T("Status %d"), s)) or nil
+end
+
+-- “First Last”, or the email address (requesters: primary_email, agents: email).
+local function personName(r)
+  return text(((text(r.first_name) or "") .. " " .. (text(r.last_name) or ""))) or text(r.primary_email) or text(r.email)
+end
+
+local function requesterValues(r)
+  local first, last = text(r.first_name), text(r.last_name)
+  local name = personName(r)
+  return {
+    [F.name] = name, [F.first] = first, [F.last] = last,
+    [F.email] = text(r.primary_email), [F.work] = text(r.work_phone_number), [F.mobile] = text(r.mobile_phone_number),
+    [F.job] = text(r.job_title), [F.active] = r.active == true, [F.fsid] = tonumber(r.id),
+    [F.created] = timestamp(r.created_at), [F.updated] = timestamp(r.updated_at),
+  }
+end
+
+-- Values of a ticket, without its requester link. `lk`: names read from Freshservice (readLookups):
+-- custom statuses, agents, groups and requesters (id → name).
+local function ticketValues(t, lk)
+  local id = tonumber(t.id)
+  local source = tonumber(t.source)
+  return {
+    [F.number] = id,
+    [F.subject] = text(t.subject),
+    [F.requesterID] = tonumber(t.requester_id),
+    [F.requesterName] = lk.people[tonumber(t.requester_id) or -1] or lk.agents[tonumber(t.requester_id) or -1],
+    [F.agentName] = lk.agents[tonumber(t.responder_id) or -1],
+    [F.groupName] = lk.groups[tonumber(t.group_id) or -1],
+    [F.status] = statusName(t.status, lk.status),
+    [F.priority] = PRIORITY[tonumber(t.priority)],
+    [F.level] = tonumber(t.priority),
+    [F.urgency] = LEVEL[tonumber(t.urgency)],
+    [F.impact] = LEVEL[tonumber(t.impact)],
+    [F.source] = source and (SOURCE[source] or string.format(T("Source %d"), source)) or nil,
+    [F.type] = text(t.type),
+    [F.category] = text(t.category), [F.subcategory] = text(t.sub_category), [F.item] = text(t.item_category),
+    [F.due] = timestamp(t.due_by), [F.frDue] = timestamp(t.fr_due_by),
+    [F.created] = timestamp(t.created_at), [F.updated] = timestamp(t.updated_at),
+    [F.escalated] = t.is_escalated == true,
+    [F.assigned] = tonumber(t.responder_id) ~= nil,
+    [F.agent] = tonumber(t.responder_id), [F.group] = tonumber(t.group_id),
+    [F.tags] = joined(t.tags),
+    [F.description] = text(t.description_text),
+    [F.other] = customLines(t.custom_fields),
+    [F.url] = id and ("https://" .. api.host .. "/a/tickets/" .. math.floor(id)) or nil,
+  }
+end
+
+-- Names of custom statuses (id > 5) from the ticket form fields, when Freshservice gives them.
+local function statusNames()
+  local names = {}
+  local ok, res = pcall(get, "/ticket_form_fields")
+  if not ok or type(res) ~= "table" then return names end
+  for _, f in ipairs(type(res.ticket_fields) == "table" and res.ticket_fields or {}) do
+    if f.name == "status" then
+      for _, c in ipairs(type(f.choices) == "table" and f.choices or {}) do
+        local id = tonumber(c.id) or tonumber(c.value)
+        local label = text(c.customer_display_name) or text(c.value)
+        if id and label and not tonumber(label) and id > 5 then names[id] = label end
+      end
+    end
+  end
+  return names
+end
+
+-- Names of statuses, agents and groups. Reading agents and groups may need more rights than reading
+-- tickets: without them, a warning, and the tickets keep the IDs only.
+local function readLookups(warnings)
+  local lk = { status = statusNames(), agents = {}, groups = {}, people = {}, agentsRead = false, groupsRead = false }
+  local ok, list = pcall(getAll, "/agents", "agents", T("Agents"))
+  if ok then
+    lk.agentsRead = true
+    for _, a in ipairs(list) do if tonumber(a.id) then lk.agents[tonumber(a.id)] = personName(a) end end
+  else
+    warnings[#warnings + 1] = string.format(T("Agents are not readable with this API key (%s): tickets keep the agent ID only."), tostring(list))
+  end
+  ok, list = pcall(getAll, "/groups", "groups", T("Groups"))
+  if ok then
+    lk.groupsRead = true
+    for _, g in ipairs(list) do if tonumber(g.id) then lk.groups[tonumber(g.id)] = text(g.name) end end
+  else
+    warnings[#warnings + 1] = string.format(T("Groups are not readable with this API key (%s): tickets keep the group ID only."), tostring(list))
+  end
+  return lk
+end
+
+---------------------------------------------------------------------------------------------
+-- Reading the account
+
+-- o = { domain, key, choice, query, months, all } (empty values: those saved by the previous run).
+local function readAccount(o)
+  connect(o)
+  local choice = text(o.choice) or saved(SECRET.choice) or CHOICE.recent
+  local queryText = text(o.query) or (o.query == nil and saved(SECRET.query)) or nil
+  local months = tonumber(o.months) or tonumber(saved(SECRET.months)) or 12
+  local all = o.all
+  if all == nil then all = saved(SECRET.all) == "yes" end
+  keep(SECRET.choice, choice)
+  keep(SECRET.query, queryText)
+  keep(SECRET.months, tostring(math.floor(months)))
+  keep(SECRET.all, all and "yes" or "no")
+
+  local data = { warnings = {} }
+  data.lookups = readLookups(data.warnings)
+  if choice == CHOICE.query then
+    if not queryText then error(T("Empty filter query: enter one, or choose another kind of tickets."), 0) end
+    data.tickets = filterTickets(queryText, data.warnings)
+  elseif choice == CHOICE.mine or choice == CHOICE.watching then
+    data.tickets = getAll("/tickets", "tickets", LIB.tickets,
+                          { filter = choice == CHOICE.mine and "new_and_my_open" or "watching" })
+  else
+    -- Without updated_since, Freshservice lists only the tickets created during the last 30 days.
+    local since = os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() - math.floor(months * 30.44 * 86400))
+    data.tickets = getAll("/tickets", "tickets", LIB.tickets, { updated_since = since, order_type = "asc" })
+  end
+
+  local wanted = {}
+  for _, t in ipairs(data.tickets) do if tonumber(t.requester_id) then wanted[tonumber(t.requester_id)] = true end end
+  data.requesters = {}
+  local found = {}
+  for _, r in ipairs(getAll("/requesters", "requesters", LIB.requesters)) do
+    local id = tonumber(r.id)
+    if id then data.lookups.people[id] = personName(r) end
+    if id and (all or wanted[id]) then
+      data.requesters[#data.requesters + 1] = r
+      found[id] = true
+    end
+  end
+  local missing = 0
+  for id in pairs(wanted) do if not found[id] then missing = missing + 1 end end
+  if missing > 0 then
+    data.warnings[#data.warnings + 1] = string.format(T("%d requesters of tickets are not in the requesters list (agents, deleted requesters): their tickets keep the requester ID only."), missing)
+  end
+  data.found = found
+  return data
+end
+
+---------------------------------------------------------------------------------------------
+-- Parameters and database
+
+function parameters(ctx)
+  return doobs.parameters(T("Freshservice tickets"), {
+    database = T("Service desk"),
+    message = T("Tickets and requesters of your Freshservice account, read with your API key (profile › Profile settings › API key)."),
+  })
+    :addText("domain", T("Domain"), { default = saved(SECRET.domain), placeholder = T("yourcompany (for yourcompany.freshservice.com)") })
+    :addPassword("key", T("API key"), { help = T("Kept in the Keychain of this device. Leave empty to use the saved key.") })
+    :addChoice("choice", T("Tickets"), { CHOICE.recent, CHOICE.mine, CHOICE.watching, CHOICE.query },
+               { default = saved(SECRET.choice) or CHOICE.recent })
+    :addInteger("months", T("Months"), { default = tonumber(saved(SECRET.months)) or 12,
+      help = T("Tickets updated during this number of months (choice “Updated during the last months”).") })
+    :addText("query", T("Filter query"), { default = saved(SECRET.query), placeholder = "status:2 AND priority:4",
+      help = T("Freshservice syntax, for the choice “Filter query”: status:2 AND priority:4 (300 tickets at most).") })
+    :addBoolean("all", T("All requesters"), { default = false, help = T("Otherwise, only the requesters of the imported tickets.") })
+end
+
+-- Values met in the tickets, for a choice list (fixed values first, in their order, then the others sorted).
+local function choicesOf(rows, field, fixed)
+  local out, seen, others = {}, {}, {}
+  for _, v in ipairs(fixed or {}) do if not seen[v] then seen[v] = true; out[#out + 1] = v end end
+  for _, values in ipairs(rows) do
+    local v = values[field]
+    if v and not seen[v] then seen[v] = true; others[#others + 1] = v end
+  end
+  table.sort(others)
+  for _, v in ipairs(others) do out[#out + 1] = v end
+  return out
+end
+
+-- Names of a lookup table (id → name), sorted.
+local function namesOf(map)
+  local out, seen = {}, {}
+  for _, name in pairs(map) do if not seen[name] then seen[name] = true; out[#out + 1] = name end end
+  table.sort(out)
+  return out
+end
+
+function import(ctx)
+  local p = ctx.params or {}
+  doobs.timeout(1800)
+  local data = readAccount({ domain = p.domain, key = p.key, choice = p.choice, query = p.query or "",
+                             months = p.months, all = p.all == true })
+  local db = doobs.database()
+  for _, w in ipairs(data.warnings) do db:addWarning(w) end
+
+  -- 1. Requesters.
+  local R = db:addLibrary(LIB.requesters, { icon = "person.2", color = "teal" })
+  R:addFields({
+    F.name, F.first, F.last, { F.email, "email" }, { F.work, "phone" }, { F.mobile, "phone" }, F.job,
+    { F.active, "boolean" }, { F.created, "datetime" }, { F.updated, "datetime" }, { F.fsid, "integer" },
+  })
+  for _, r in ipairs(data.requesters) do R:addRecord(requesterValues(r), tostring(r.id)) end
+  R:setTitle(F.name)
+  R:setSubtitle(F.email)
+  R:setSort(F.name)
+  R:addCollection(T("Active requesters"), { { F.active, "=", true } })
+  R:defaultForm({ columns = 2 })
+    :addSection(T("Contact"), { { F.name, 2 }, F.first, F.last, F.email, F.job, F.work, F.mobile })
+    :addSection(T("Freshservice"), { F.active, F.fsid, F.created, F.updated })
+
+  -- 2. Tickets.
+  local lk = data.lookups
+  local fixedStatus = { STATUS[2], STATUS[3], STATUS[4], STATUS[5] }
+  for id = 6, 99 do if lk.status[id] then fixedStatus[#fixedStatus + 1] = lk.status[id] end end
+  local rows = {}   -- values of each ticket, computed once
+  for i, t in ipairs(data.tickets) do rows[i] = ticketValues(t, lk) end
+  local Tk = db:addLibrary(LIB.tickets, { icon = "ticket", color = "orange" })
+  Tk:addFields({
+    { F.number, "integer" },
+    F.subject,
+    { F.requester, "relation", { library = R, cardinality = "one" } },
+    lk.agentsRead and { F.agentName, "choice", { choices = namesOf(lk.agents) } } or F.agentName,
+    lk.groupsRead and { F.groupName, "choice", { choices = namesOf(lk.groups) } } or F.groupName,
+    { F.status, "choice", { choices = choicesOf(rows, F.status, fixedStatus) } },
+    { F.priority, "choice", { choices = { PRIORITY[1], PRIORITY[2], PRIORITY[3], PRIORITY[4] } } },
+    { F.urgency, "choice", { choices = { LEVEL[1], LEVEL[2], LEVEL[3] } } },
+    { F.impact, "choice", { choices = { LEVEL[1], LEVEL[2], LEVEL[3] } } },
+    { F.source, "choice", { choices = choicesOf(rows, F.source, { SOURCE[1], SOURCE[2], SOURCE[3], SOURCE[4] }) } },
+    #choicesOf(rows, F.type) > 0 and { F.type, "choice", { choices = choicesOf(rows, F.type, { "Incident", "Service Request" }) } } or F.type,
+    F.category, F.subcategory, F.item,
+    { F.due, "datetime" }, { F.frDue, "datetime" }, { F.created, "datetime" }, { F.updated, "datetime" },
+    { F.escalated, "boolean" }, { F.assigned, "boolean" },
+    F.tags,
+    { F.description, "longtext" }, { F.other, "longtext" },
+    { F.url, "url" }, F.requesterName, { F.level, "integer" }, { F.requesterID, "integer" }, { F.agent, "integer" }, { F.group, "integer" },
+  })
+  for i, t in ipairs(data.tickets) do
+    local values = rows[i]
+    if data.found[tonumber(t.requester_id) or -1] then values[F.requester] = tostring(t.requester_id) end
+    Tk:addRecord(values, tostring(t.id))
+  end
+  Tk:setTitle(F.subject)
+  Tk:setSubtitle(F.status)
+  Tk:setSort("-" .. F.updated)
+  Tk:setGroup(F.status)
+  Tk:hideFields(F.requesterName, F.level, F.requesterID, F.agent, F.group)
+  local notDone = { { F.status, "!=", STATUS[4] }, { F.status, "!=", STATUS[5] } }
+  local function with(extra)
+    local rules = { notDone[1], notDone[2] }
+    for _, r in ipairs(extra) do rules[#rules + 1] = r end
+    return rules
+  end
+  Tk:addCollection(T("Open tickets"), { { F.status, "=", STATUS[2] } })
+  Tk:addCollection(T("Pending tickets"), { { F.status, "=", STATUS[3] } })
+  Tk:addCollection(T("Urgent and high, not resolved"), with({ { F.level, ">=", 3 } }))
+  Tk:addCollection(T("Unassigned"), with({ { F.assigned, "=", false } }))
+  Tk:addCollection(T("Escalated tickets"), with({ { F.escalated, "=", true } }))
+  Tk:addCollection(T("Resolved or closed"), { { F.status, "=", STATUS[4] }, { F.status, "=", STATUS[5] } }, "any")
+  Tk:addCollection(T("Created in the last 7 days"), { { F.created, "lastdays", 7 } })
+  Tk:defaultForm({ columns = 2 })
+    :addSection(T("Ticket"), { F.number, F.status, { F.subject, 2 }, { F.requester, 2 }, F.priority, F.urgency,
+                               F.impact, F.source })
+    :addSection(T("Assignment"), { F.agentName, F.groupName })
+    :addSection(T("Classification"), { F.type, F.category, F.subcategory, F.item, { F.tags, 2 } })
+    :addSection(T("Tracking"), { F.due, F.frDue, F.created, F.updated, F.escalated, F.assigned })
+    :addSection(T("Description"), { { F.description, 2 }, { F.other, 2 }, { F.url, 2 } })
+
+  -- Report of the tickets not resolved or closed (computed when shown: always up to date). Grouped by the
+  -- requester name (hidden field), which also names requesters missing from the requesters list (agents).
+  db:addReport(T("Open tickets"), {
+    subtitle = T("Tickets not resolved or closed: open, pending and custom statuses."),
+    blocks = {
+      { type = "kpi", title = T("Overview"), library = Tk, filter = notDone, series = {
+          { label = T("Not resolved"), measure = "count" },
+          { label = T("Unassigned"), measure = "count", filter = { { F.assigned, "=", false } } },
+          { label = T("Urgent and high"), measure = "count", filter = { { F.level, ">=", 3 } } },
+          { label = T("Escalated"), measure = "count", filter = { { F.escalated, "=", true } } },
+        } },
+      { type = "chart", chart = "hbar", title = T("By requester"), library = Tk, filter = notDone,
+        groupBy = F.requesterName, sort = "value", limit = 20, others = true, width = "half",
+        series = { { label = T("Tickets"), measure = "count" } } },
+      { type = "chart", chart = "hbar", title = T("By group"), library = Tk, filter = notDone,
+        groupBy = F.groupName, sort = "value", width = "half", series = { { label = T("Tickets"), measure = "count" } } },
+      { type = "table", title = T("By requester and group"), library = Tk, filter = notDone,
+        groupBy = F.requesterName, splitBy = F.groupName, sort = "value", limit = 30, showTotal = true,
+        series = { { label = T("Tickets"), measure = "count" } } },
+    },
+  })
+
+  -- Refresh later with this same script (Scripts entry, database menu, menu of a ticket).
+  db:addAction(T("Refresh from Freshservice"), { scope = "database" })
+  db:addAction(T("Refresh this ticket"), { scope = "record", library = Tk })
+
+  doobs.log(string.format(T("%d tickets, %d requesters."), #data.tickets, #data.requesters))
+  return db
+end
+
+---------------------------------------------------------------------------------------------
+-- Actions. Refresh: requesters are found by “Freshservice ID”, tickets by “Number”; only the fields read
+-- from Freshservice are written (your own fields and records are kept). Tickets outside the chosen
+-- tickets (older, no longer matching the filter) are left as they are; nothing is deleted.
+
+local function hasField(ctx, library, field)
+  for _, l in ipairs(ctx.libraries or {}) do
+    if l.name == library then
+      for _, f in ipairs(l.fields or {}) do if f == field then return true end end
+    end
+  end
+  return false
+end
+
+local function refresh(ctx)
+  doobs.timeout(1800)
+  local data = readAccount({})   -- domain, key and choice of tickets of the previous run
+  local c = doobs.changes()
+  c:key(LIB.requesters, F.fsid)
+  for _, r in ipairs(data.requesters) do c:upsert(LIB.requesters, F.fsid, requesterValues(r)) end
+  for _, t in ipairs(data.tickets) do
+    local values = ticketValues(t, data.lookups)
+    if data.found[tonumber(t.requester_id) or -1] then values[F.requester] = tonumber(t.requester_id) end
+    c:upsert(LIB.tickets, F.number, values)
+  end
+  local message = string.format(T("%d tickets, %d requesters."), #data.tickets, #data.requesters)
+  if #data.warnings > 0 then message = message .. "\n" .. table.concat(data.warnings, "\n") end
+  return c:message(message)
+end
+
+local function refreshTicket(ctx)
+  local id = tonumber(ctx.record and ctx.record[F.number])
+  if not id then error(T("This record has no ticket number."), 0) end
+  connect({})
+  local res = get("/tickets/" .. math.floor(id))
+  local ticket = type(res.ticket) == "table" and res.ticket or {}
+  local lk = readLookups({})
+  -- Requester name: this requester, or the agent who opened the ticket.
+  local rid = tonumber(ticket.requester_id)
+  if rid then
+    local ok, r = pcall(get, "/requesters/" .. math.floor(rid))
+    if ok and type(r) == "table" and type(r.requester) == "table" then lk.people[rid] = personName(r.requester) end
+  end
+  local values = ticketValues(ticket, lk)
+  values[F.requester] = values[F.requesterID]   -- linked when this requester is in the database
+  return doobs.changes():key(LIB.requesters, F.fsid):update(ctx.id, values)
+end
+
+function action(ctx)
+  if not hasField(ctx, LIB.tickets, F.number) or not hasField(ctx, LIB.requesters, F.fsid) then
+    error(T("This database has no Freshservice “Tickets” and “Requesters” libraries."), 0)
+  end
+  if ctx.scope == "record" then return refreshTicket(ctx) end
+  return refresh(ctx)
+end

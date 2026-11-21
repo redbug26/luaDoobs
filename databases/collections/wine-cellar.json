@@ -1,0 +1,11 @@
+{
+  "file": "wine-cellar.luaDoobs",
+  "title": {
+    "en": "Wine cellar",
+    "fr": "Cave à vins"
+  },
+  "description": {
+    "en": "Manage estates, wine lots, vintages, appellations, prices, storage locations and tasting history, with a calculated drinking window. Bottle quantities are maintained manually; the date a lot is finished is recorded automatically.",
+    "fr": "Gérez les domaines, lots de bouteilles, millésimes, appellations, prix, emplacements et dégustations, avec la période de consommation calculée. Les quantités sont mises à jour manuellement ; la date de fin d’un lot est notée automatiquement."
+  }
+}

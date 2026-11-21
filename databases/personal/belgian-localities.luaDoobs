@@ -1,0 +1,180 @@
+-- Belgian cities and postal localities
+-- Open in Doobs to create a read-only linked library from the public ODWB JSON export.
+-- Includes every source row: postal code, locality, French municipality name when provided,
+-- arrondissement, province and coordinates. No credential, input file or existing library is needed.
+-- Refreshes on opening and daily by default; the interval is configurable in minutes.
+-- The source has no record ID: identity combines postal code, locality and municipality.
+-- Corrections to any of those three values change the record identity.
+
+doobs.trInit("fr", {
+  ["Belgian localities"] = "Villes et localités belges",
+  ["All postal localities from ODWB, refreshed on opening and daily by default. Missing municipality names and provinces remain empty."] = "Toutes les localités postales de la source ODWB, actualisées à l’ouverture et chaque jour par défaut. Les noms de communes et provinces absents restent vides.",
+  ["Refresh interval (minutes)"] = "Intervalle de rafraîchissement (minutes)",
+  ["0 disables periodic refresh; the library still refreshes on opening."] = "0 désactive le rafraîchissement périodique ; la bibliothèque reste actualisée à l’ouverture.",
+  ["The refresh interval must be a non-negative integer."] = "L’intervalle de rafraîchissement doit être un entier positif ou nul.",
+  ["Identifier"] = "Identifiant",
+  ["Postal code"] = "Code postal",
+  ["Locality"] = "Localité",
+  ["Municipality (French name)"] = "Commune (nom français)",
+  ["Arrondissement"] = "Arrondissement",
+  ["Province"] = "Province",
+  ["Position"] = "Position",
+  ["Latitude"] = "Latitude",
+  ["Longitude"] = "Longitude",
+  ["Postal address"] = "Adresse postale",
+  ["Administrative divisions"] = "Divisions administratives",
+  ["Coordinates"] = "Coordonnées",
+  ["Without a French municipality name"] = "Sans nom de commune en français",
+  ["Without a province"] = "Sans province",
+})
+local T = doobs.tr
+
+-- Literal source: approving this file also approves the independently executed fetch script.
+local LOCALITIES_SCRIPT = [==[
+-- Belgian postal localities: public ODWB JSON export.
+doobs.trInit("fr", {
+  ["Cannot read the Belgian localities. Try again later. %s"] = "Impossible de lire les localités belges. Réessayez plus tard. %s",
+  ["ODWB: the JSON export must be a list."] = "ODWB : l’export JSON doit être une liste.",
+  ["ODWB: unexpected or incomplete export; refresh stopped."] = "ODWB : export inattendu ou incomplet ; actualisation interrompue.",
+  ["ODWB: a locality has no postal code or name."] = "ODWB : une localité n’a pas de code postal ou de nom.",
+  ["ODWB: duplicate locality identifier: %s"] = "ODWB : identifiant de localité en double : %s",
+})
+local T = doobs.tr
+local SOURCE = "https://www.odwb.be/api/explore/v2.1/catalog/datasets/code-postaux-belge/exports/json"
+
+local function text(value)
+  if type(value) ~= "string" then return nil end
+  -- Trim ASCII whitespace explicitly: locale-dependent %s can split UTF-8 accents.
+  local clean = value:match("^[ \t\r\n]*(.-)[ \t\r\n]*$")
+  if clean ~= "" then return clean end
+end
+
+local function number(value)
+  if type(value) ~= "number" and type(value) ~= "string" then return nil end
+  local n = tonumber(value)
+  if n and n == n and n ~= math.huge and n ~= -math.huge then return n end
+end
+
+local function position(row)
+  local point = type(row.coordonnees) == "table" and row.coordonnees or {}
+  local lat = number(point.lat) or number(row.column_4)
+  local lon = number(point.lon) or number(row.column_3)
+  if lat and lon and lat >= -90 and lat <= 90 and lon >= -180 and lon <= 180 then
+    return tostring(lat) .. ", " .. tostring(lon), lat, lon
+  end
+end
+
+local function keyPart(value)
+  value = value or ""
+  -- Length prefixes avoid ambiguity even if a source name contains punctuation.
+  return tostring(#value) .. ":" .. value
+end
+
+function fetch(ctx)
+  local query = { lang = "fr", timezone = "Europe/Brussels" }
+  local limit
+  if ctx.sample then
+    limit = number(ctx.limit)
+    limit = limit and limit > 0 and math.max(1, math.floor(limit)) or 20
+    query.limit = limit
+  end
+  -- A trial reads one limited response; a normal refresh reads the entire export once.
+  local ok, rows = pcall(doobs.http.getJSON, SOURCE, { query = query, timeout = 120 })
+  if not ok then
+    error(string.format(T("Cannot read the Belgian localities. Try again later. %s"), tostring(rows)))
+  end
+  if type(rows) ~= "table" then error(T("ODWB: the JSON export must be a list.")) end
+  local count = 0
+  for key, row in pairs(rows) do
+    if type(key) ~= "number" or key < 1 or key % 1 ~= 0 or type(row) ~= "table" then
+      error(T("ODWB: unexpected or incomplete export; refresh stopped."))
+    end
+    count = count + 1
+  end
+  for i = 1, count do
+    if type(rows[i]) ~= "table" then
+      error(T("ODWB: unexpected or incomplete export; refresh stopped."))
+    end
+  end
+
+  local records, seen = {}, {}
+  for _, row in ipairs(rows) do
+    local postal = text(row.column_1)
+    local locality = text(row.column_2)
+    local municipality = text(row.municipality_name_french)
+    if not postal or not locality then error(T("ODWB: a locality has no postal code or name.")) end
+    -- Postal code alone, or postal code + locality, is not unique in this source.
+    -- Do not use row order, coordinates or translated labels as part of the identity.
+    local id = keyPart(postal) .. keyPart(locality) .. keyPart(municipality)
+    if seen[id] then error(string.format(T("ODWB: duplicate locality identifier: %s"), id)) end
+    seen[id] = true
+    local location, lat, lon = position(row)
+    records[#records + 1] = {
+      id = id,
+      postal_code = postal,
+      locality = locality,
+      municipality_fr = municipality,
+      arrondissement = text(row.arrondissement),
+      province = text(row.province),
+      position = location,
+      latitude = lat,
+      longitude = lon,
+    }
+    if limit and #records >= limit then break end
+  end
+  -- On network or identity errors, Doobs keeps the last valid cache.
+  return records
+end
+]==]
+
+function parameters(ctx)
+  local form = doobs.parameters(T("Belgian localities"), {
+    database = T("Belgian localities"),
+    message = T("All postal localities from ODWB, refreshed on opening and daily by default. Missing municipality names and provinces remain empty."),
+  })
+  form:addInteger("refresh", T("Refresh interval (minutes)"), {
+    default = 1440, required = true,
+    help = T("0 disables periodic refresh; the library still refreshes on opening."),
+  })
+  return form
+end
+
+function import(ctx)
+  local interval = ctx.params.refresh
+  if interval == nil then interval = 1440 end
+  if type(interval) ~= "number" or interval < 0 or interval % 1 ~= 0 then
+    error(T("The refresh interval must be a non-negative integer."))
+  end
+  local LOCALITY, POSTAL = T("Locality"), T("Postal code")
+  local MUNICIPALITY, PROVINCE = T("Municipality (French name)"), T("Province")
+  local POSITION, LAT, LON = T("Position"), T("Latitude"), T("Longitude")
+
+  local db = doobs.database()
+  local localities = db:addLinkedLibrary(T("Belgian localities"), {
+    kind = "lua", script = LOCALITIES_SCRIPT, key = "id",
+    refresh = interval, refreshOnOpen = true,
+    timeout = 120, maxRecords = 100000,
+  }, { icon = "building.2", color = "blue" })
+  localities:addField(LOCALITY, "text", { source = "locality" })
+  localities:addField(POSTAL, "text", { source = "postal_code" })
+  localities:addField(MUNICIPALITY, "text", { source = "municipality_fr" })
+  localities:addField(T("Arrondissement"), "text", { source = "arrondissement" })
+  localities:addField(PROVINCE, "text", { source = "province" })
+  localities:addField(POSITION, "location", { source = "position" })
+  localities:addField(LAT, "decimal", { source = "latitude" })
+  localities:addField(LON, "decimal", { source = "longitude" })
+  localities:addField(T("Identifier"), "text", { source = "id" })
+  localities:setTitle(LOCALITY)
+  localities:setSubtitle(POSTAL)
+  localities:setSort(LOCALITY, POSTAL, MUNICIPALITY)
+  localities:setView("table")
+  localities:hideFields(T("Identifier"))
+  localities:addCollection(T("Without a French municipality name"), { { MUNICIPALITY, "empty" } })
+  localities:addCollection(T("Without a province"), { { PROVINCE, "empty" } })
+
+  local form = localities:defaultForm({ columns = 2 })
+  form:addSection(T("Postal address"), { LOCALITY, POSTAL })
+  form:addSection(T("Administrative divisions"), { MUNICIPALITY, T("Arrondissement"), PROVINCE })
+  form:addSection(T("Coordinates"), { { POSITION, 2 }, LAT, LON })
+  return db
+end

@@ -1,0 +1,100 @@
+-- Website directory
+-- Open in Doobs to create Categories and Websites. All start empty, with no network requests.
+-- Add categories, then link them to each bookmark. A site may have several categories.
+-- Attach screenshots in the media field in Doobs; no page is scraped or captured automatically.
+
+doobs.trInit("fr", {
+  ["Website directory"] = "Répertoire de sites Web",
+  ["Enriched bookmarks with categories, descriptions, screenshots and ratings. Attach screenshots manually in Doobs."] = "Signets enrichis avec catégories, descriptions, captures et évaluations. Ajoutez les captures manuellement dans Doobs.",
+  ["Categories"] = "Catégories",
+  ["Category"] = "Catégorie",
+  ["Description"] = "Description",
+  ["Websites"] = "Sites Web",
+  ["Title"] = "Titre",
+  ["URL"] = "URL",
+  ["Screenshot"] = "Capture",
+  ["Rating"] = "Évaluation",
+  ["Review"] = "Avis",
+  ["Favorite"] = "Favori",
+  ["Archived"] = "Archivé",
+  ["Added on"] = "Ajouté le",
+  ["Last visited"] = "Dernière visite",
+  ["Notes"] = "Notes",
+  ["Favorites"] = "Favoris",
+  ["To review"] = "À évaluer",
+  ["Active bookmarks"] = "Signets actifs",
+  ["Bookmark"] = "Signet",
+  ["Capture and review"] = "Capture et évaluation",
+  ["Tracking"] = "Suivi",
+})
+local T = doobs.tr
+
+-- Reused labels, localized once.
+local N = {
+  website_directory = T("Website directory"),
+  introduction = T("Enriched bookmarks with categories, descriptions, screenshots and ratings. Attach screenshots manually in Doobs."),
+  categories = T("Categories"),
+  category = T("Category"),
+  description = T("Description"),
+  websites = T("Websites"),
+  title = T("Title"),
+  url = T("URL"),
+  screenshot = T("Screenshot"),
+  rating = T("Rating"),
+  review = T("Review"),
+  favorite = T("Favorite"),
+  archived = T("Archived"),
+  added_on = T("Added on"),
+  last_visited = T("Last visited"),
+  notes = T("Notes"),
+  favorites = T("Favorites"),
+  to_review = T("To review"),
+  active_bookmarks = T("Active bookmarks"),
+  bookmark = T("Bookmark"),
+  capture_and_review = T("Capture and review"),
+  tracking = T("Tracking"),
+}
+
+function parameters(ctx)
+  return doobs.parameters(N.website_directory, {
+    database = N.website_directory,
+    message = N.introduction,
+  })
+end
+
+function import(ctx)
+  local db = doobs.database()
+  local categories = db:addLibrary(N.categories, { icon = "folder", color = "orange" })
+  categories:addField(N.category, "text")
+  categories:addField(N.description, "longtext")
+  categories:setTitle(N.category)
+  categories:setSort(N.category)
+  categories:setView("table")
+  local form_categories = categories:defaultForm({ columns = 2 })
+  form_categories:addSection(N.category, { N.category, N.description })
+  local sites = db:addLibrary(N.websites, { icon = "globe", color = "blue" })
+  sites:addField(N.title, "text")
+  sites:addField(N.url, "url")
+  sites:addField(N.categories, "relation", { library = categories, many = true })
+  sites:addField(N.description, "longtext")
+  sites:addField(N.screenshot, "media")
+  sites:addField(N.rating, "rating", { max = 5 })
+  sites:addField(N.review, "longtext")
+  sites:addField(N.favorite, "boolean", { default = false })
+  sites:addField(N.archived, "boolean", { default = false })
+  sites:addField(N.added_on, "date", { default = "@today" })
+  sites:addField(N.last_visited, "date")
+  sites:addField(N.notes, "longtext")
+  sites:setTitle(N.title)
+  sites:setSort(N.title)
+  sites:setView("table")
+  sites:addCollection(N.favorites, { { N.favorite, "=", true }, { N.archived, "=", false } })
+  sites:addCollection(N.to_review, { { N.rating, "empty" }, { N.archived, "=", false } })
+  sites:addCollection(N.active_bookmarks, { { N.archived, "=", false } })
+  sites:addCollection(N.archived, { { N.archived, "=", true } })
+  local form_sites = sites:defaultForm({ columns = 2 })
+  form_sites:addSection(N.bookmark, { N.title, N.url, N.categories, N.description })
+  form_sites:addSection(N.capture_and_review, { N.screenshot, N.rating, N.review })
+  form_sites:addSection(N.tracking, { N.favorite, N.archived, N.added_on, N.last_visited, N.notes })
+  return db
+end

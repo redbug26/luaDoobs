@@ -1,0 +1,212 @@
+-- Subscriptions and services
+-- Open in Doobs to create Subscriptions, Payments and Summary. No bank connection or credentials.
+-- Annual cost is a recurring run rate for active services, not spending in a calendar year.
+-- Weekly/fortnightly estimates use 52/26 payments per year. Other schedules use months.
+-- Renewal and debit dates are updated manually. Select subscriptions in Summary, including new ones.
+-- Payments record actual history and do not change the recurring price or renewal dates.
+
+doobs.trInit("fr", {
+  ["Subscriptions and services"] = "Abonnements et services",
+  ["Track services and payments. Select all relevant subscriptions in the Summary record to calculate their annual total in EUR."] = "Suivez les services et prélèvements. Sélectionnez les abonnements concernés dans la fiche Récapitulatif pour calculer leur coût annuel total en EUR.",
+  ["Subscriptions"] = "Abonnements",
+  ["Service"] = "Service",
+  ["Provider"] = "Fournisseur",
+  ["Digital tools"] = "Outils numériques",
+  ["Telephony"] = "Téléphonie",
+  ["Internet"] = "Internet",
+  ["Streaming"] = "Streaming",
+  ["Other"] = "Autre",
+  ["Category"] = "Catégorie",
+  ["Active"] = "Actif",
+  ["Trial"] = "Essai",
+  ["Paused"] = "Suspendu",
+  ["Cancelled"] = "Résilié",
+  ["Status"] = "Statut",
+  ["Price per payment"] = "Prix par prélèvement",
+  ["Weekly"] = "Hebdomadaire",
+  ["Fortnightly"] = "Toutes les deux semaines",
+  ["Monthly"] = "Mensuelle",
+  ["Every two months"] = "Tous les deux mois",
+  ["Quarterly"] = "Trimestrielle",
+  ["Semiannual"] = "Semestrielle",
+  ["Annual"] = "Annuelle",
+  ["Frequency"] = "Fréquence",
+  ["Payments per year"] = "Prélèvements par an",
+  ["Annual cost"] = "Coût annuel",
+  ["Missing active cost"] = "Coût actif manquant",
+  ["Monthly equivalent"] = "Équivalent mensuel",
+  ["Direct debit"] = "Prélèvement automatique",
+  ["Payment method"] = "Moyen de paiement",
+  ["Account label"] = "Libellé du compte",
+  ["Started on"] = "Date de début",
+  ["Next debit"] = "Prochain prélèvement",
+  ["Renewal date"] = "Date de renouvellement",
+  ["Automatic renewal"] = "Renouvellement automatique",
+  ["Notice period (days)"] = "Préavis (jours)",
+  ["Cancellation deadline"] = "Date limite de résiliation",
+  ["Website"] = "Site web",
+  ["Notes"] = "Notes",
+  ["Active services"] = "Services actifs",
+  ["Recurring cost"] = "Coût récurrent",
+  ["Billing and renewal"] = "Facturation et renouvellement",
+  ["Payments"] = "Prélèvements",
+  ["Reference"] = "Référence",
+  ["Subscription"] = "Abonnement",
+  ["Payment date"] = "Date de prélèvement",
+  ["Amount"] = "Montant",
+  ["Paid"] = "Payé",
+  ["Receipt"] = "Justificatif",
+  ["Unpaid"] = "À payer",
+  ["Payment"] = "Prélèvement",
+  ["Summary"] = "Récapitulatif",
+  ["Name"] = "Nom",
+  ["Selected subscriptions"] = "Abonnements sélectionnés",
+  ["Selected service count"] = "Nombre de services sélectionnés",
+  ["Missing cost count"] = "Nombre de coûts manquants",
+  ["Annual total"] = "Total annuel",
+  ["Monthly total"] = "Total mensuel",
+  ["Select subscriptions here; update this selection whenever you add a service. The total stays empty if a selected active service has no price or frequency."] = "Sélectionnez les abonnements ici ; actualisez cette sélection à chaque ajout de service. Le total reste vide si le prix ou la fréquence d’un service actif sélectionné manque.",
+  ["Selected services"] = "Services sélectionnés",
+  ["Recurring totals"] = "Totaux récurrents",
+})
+local T = doobs.tr
+
+-- Reused labels, localized once.
+local N = {
+  subscriptions_and_services = T("Subscriptions and services"),
+  introduction = T("Track services and payments. Select all relevant subscriptions in the Summary record to calculate their annual total in EUR."),
+  subscriptions = T("Subscriptions"),
+  service = T("Service"),
+  provider = T("Provider"),
+  digital_tools = T("Digital tools"),
+  telephony = T("Telephony"),
+  internet = T("Internet"),
+  streaming = T("Streaming"),
+  other = T("Other"),
+  category = T("Category"),
+  active = T("Active"),
+  trial = T("Trial"),
+  paused = T("Paused"),
+  cancelled = T("Cancelled"),
+  status = T("Status"),
+  price_per_payment = T("Price per payment"),
+  weekly = T("Weekly"),
+  fortnightly = T("Fortnightly"),
+  monthly = T("Monthly"),
+  every_two_months = T("Every two months"),
+  quarterly = T("Quarterly"),
+  semiannual = T("Semiannual"),
+  annual = T("Annual"),
+  frequency = T("Frequency"),
+  payments_per_year = T("Payments per year"),
+  annual_cost = T("Annual cost"),
+  missing_active_cost = T("Missing active cost"),
+  monthly_equivalent = T("Monthly equivalent"),
+  direct_debit = T("Direct debit"),
+  payment_method = T("Payment method"),
+  account_label = T("Account label"),
+  started_on = T("Started on"),
+  next_debit = T("Next debit"),
+  renewal_date = T("Renewal date"),
+  automatic_renewal = T("Automatic renewal"),
+  notice_period_days = T("Notice period (days)"),
+  cancellation_deadline = T("Cancellation deadline"),
+  website = T("Website"),
+  notes = T("Notes"),
+  active_services = T("Active services"),
+  recurring_cost = T("Recurring cost"),
+  billing_and_renewal = T("Billing and renewal"),
+  payments = T("Payments"),
+  reference = T("Reference"),
+  subscription = T("Subscription"),
+  payment_date = T("Payment date"),
+  amount = T("Amount"),
+  paid = T("Paid"),
+  receipt = T("Receipt"),
+  unpaid = T("Unpaid"),
+  payment = T("Payment"),
+  summary = T("Summary"),
+  name = T("Name"),
+  selected_subscriptions = T("Selected subscriptions"),
+  selected_service_count = T("Selected service count"),
+  missing_cost_count = T("Missing cost count"),
+  annual_total = T("Annual total"),
+  monthly_total = T("Monthly total"),
+  selection_help = T("Select subscriptions here; update this selection whenever you add a service. The total stays empty if a selected active service has no price or frequency."),
+  selected_services = T("Selected services"),
+  recurring_totals = T("Recurring totals"),
+}
+
+function parameters(ctx)
+  return doobs.parameters(N.subscriptions_and_services, {
+    database = N.subscriptions_and_services,
+    message = N.introduction,
+  })
+end
+
+function import(ctx)
+  local db = doobs.database()
+  local services = db:addLibrary(N.subscriptions, { icon = "repeat", color = "blue" })
+  services:addField(N.service, "text")
+  services:addField(N.provider, "text")
+  services:addField(N.category, "choice", { choices = { N.digital_tools, N.telephony, N.internet, N.streaming, N.other } })
+  services:addField(N.status, "choice", { choices = { N.active, N.trial, N.paused, N.cancelled }, default = N.active })
+  services:addField(N.price_per_payment, "currency", { currency = "EUR" })
+  services:addField(N.frequency, "choice", { choices = { N.weekly, N.fortnightly, N.monthly, N.every_two_months, N.quarterly, N.semiannual, N.annual }, default = N.monthly })
+  services:addField(N.payments_per_year, "formula", { result = "number", formula = string.format("IF([%s] = \"%s\"; 52; IF([%s] = \"%s\"; 26; IF([%s] = \"%s\"; 12; IF([%s] = \"%s\"; 6; IF([%s] = \"%s\"; 4; IF([%s] = \"%s\"; 2; IF([%s] = \"%s\"; 1; \"\")))))))", N.frequency, N.weekly, N.frequency, N.fortnightly, N.frequency, N.monthly, N.frequency, N.every_two_months, N.frequency, N.quarterly, N.frequency, N.semiannual, N.frequency, N.annual) })
+  services:addField(N.annual_cost, "formula", { result = "currency", formula = string.format("IF([%s] <> \"%s\"; 0; IF(OR(ISBLANK([%s]); ISBLANK([%s])); \"\"; [%s] * [%s]))", N.status, N.active, N.price_per_payment, N.payments_per_year, N.price_per_payment, N.payments_per_year) })
+  services:addField(N.missing_active_cost, "formula", { result = "number", formula = string.format("IF(AND([%s] = \"%s\"; OR(ISBLANK([%s]); ISBLANK([%s]))); 1; 0)", N.status, N.active, N.price_per_payment, N.payments_per_year) })
+  services:addField(N.monthly_equivalent, "formula", { result = "currency", formula = string.format("IF(ISBLANK([%s]); \"\"; [%s] / 12)", N.annual_cost, N.annual_cost) })
+  services:addField(N.direct_debit, "boolean", { default = false })
+  services:addField(N.payment_method, "text")
+  services:addField(N.account_label, "text")
+  services:addField(N.started_on, "date")
+  services:addField(N.next_debit, "date")
+  services:addField(N.renewal_date, "date")
+  services:addField(N.automatic_renewal, "boolean", { default = false })
+  services:addField(N.notice_period_days, "integer", { default = 0 })
+  services:addField(N.cancellation_deadline, "formula", { result = "date", formula = string.format("IF(ISBLANK([%s]); \"\"; DATEADD([%s]; -COALESCE([%s]; 0); \"day\"))", N.renewal_date, N.renewal_date, N.notice_period_days) })
+  services:addField(N.website, "url")
+  services:addField(N.notes, "longtext")
+  services:setTitle(N.service)
+  services:setSubtitle(N.provider)
+  services:setSort(N.renewal_date, N.service)
+  services:setView("table")
+  services:addCollection(N.active_services, { { N.status, "=", N.active } })
+  services:addCollection(N.missing_active_cost, { { N.missing_active_cost, "=", 1 } })
+  local form_services = services:defaultForm({ columns = 2 })
+  form_services:addSection(N.service, { N.service, N.provider, N.category, N.status, N.website })
+  form_services:addSection(N.recurring_cost, { N.price_per_payment, N.frequency, N.payments_per_year, N.annual_cost, N.monthly_equivalent, N.missing_active_cost })
+  form_services:addSection(N.billing_and_renewal, { N.direct_debit, N.payment_method, N.account_label, N.started_on, N.next_debit, N.renewal_date, N.automatic_renewal, N.notice_period_days, N.cancellation_deadline, N.notes })
+  local payments = db:addLibrary(N.payments, { icon = "creditcard", color = "orange" })
+  payments:addField(N.reference, "text")
+  payments:addField(N.subscription, "relation", { library = services })
+  payments:addField(N.payment_date, "date", { default = "@today" })
+  payments:addField(N.amount, "currency", { currency = "EUR" })
+  payments:addField(N.paid, "boolean", { default = false })
+  payments:addField(N.receipt, "media")
+  payments:addField(N.notes, "longtext")
+  payments:setTitle(N.reference)
+  payments:setSubtitle(N.payment_date)
+  payments:setSort("-" .. N.payment_date)
+  payments:setView("table")
+  payments:addCollection(N.unpaid, { { N.paid, "=", false } })
+  local form_payments = payments:defaultForm({ columns = 2 })
+  form_payments:addSection(N.payment, { N.reference, N.subscription, N.payment_date, N.amount, N.paid, N.receipt, N.notes })
+  local summary = db:addLibrary(N.summary, { icon = "sum", color = "green" })
+  summary:addField(N.name, "text")
+  summary:addField(N.selected_subscriptions, "relation", { library = services, many = true })
+  summary:addField(N.selected_service_count, "formula", { result = "number", formula = string.format("COUNT([%s])", N.selected_subscriptions) })
+  summary:addField(N.missing_cost_count, "formula", { result = "number", formula = string.format("SUM([%s]; [%s])", N.selected_subscriptions, N.missing_active_cost) })
+  summary:addField(N.annual_total, "formula", { result = "currency", formula = string.format("IF([%s] > 0; \"\"; SUM([%s]; [%s]))", N.missing_cost_count, N.selected_subscriptions, N.annual_cost) })
+  summary:addField(N.monthly_total, "formula", { result = "currency", formula = string.format("IF(ISBLANK([%s]); \"\"; [%s] / 12)", N.annual_total, N.annual_total) })
+  summary:addField(N.notes, "longtext")
+  summary:addRecord({ [N.name] = N.subscriptions_and_services, [N.notes] = N.selection_help }, "main-summary")
+  summary:setTitle(N.name)
+  summary:setSort(N.name)
+  summary:setView("table")
+  local form_summary = summary:defaultForm({ columns = 2 })
+  form_summary:addSection(N.selected_services, { N.name, N.selected_subscriptions, N.selected_service_count })
+  form_summary:addSection(N.recurring_totals, { N.missing_cost_count, N.annual_total, N.monthly_total, N.notes })
+  return db
+end

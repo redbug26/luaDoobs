@@ -1,0 +1,170 @@
+-- Official Doobs template: Retro collection (demo)
+-- Four linked libraries (computers, publishers, games, acquisitions) with records, links,
+-- calculations, smart and manual collections, two forms and a table view.
+-- Localized with doobs.tr(English text): translations registered by doobs.trInit below.
+
+--[[doobs-template
+kind = database
+order = 10
+icon = gamecontroller
+color = indigo
+name = Collection rétro (démo) | Retro collection (demo)
+summary = Jeux, machines, éditeurs et acquisitions avec liens, calculs et collections | Games, computers, publishers and acquisitions with links, calculations and collections
+]]
+
+-- French translations (English is the source language).
+doobs.trInit("fr", {
+  ["Retro collection (demo)"] = "Collection rétro (démo)",
+  ["Retro collection"] = "Collection rétro",
+  ["Games, computers, publishers and acquisitions with links, calculations and collections"] = "Jeux, machines, éditeurs et acquisitions avec liens, calculs et collections",
+  ["Name"] = "Nom",
+  ["Year"] = "Année",
+  ["Title"] = "Titre",
+  ["Cover"] = "Couverture",
+  ["Rating"] = "Note",
+  ["Computer"] = "Machine",
+  ["Home computer"] = "Ordinateur",
+  ["Publisher"] = "Éditeur",
+  ["Purchase price"] = "Prix d'achat",
+  ["Condition"] = "État",
+  ["Completed"] = "Terminé",
+  ["Games"] = "Jeux",
+  ["Shipping"] = "Frais de port",
+  ["New"] = "Neuf",
+  ["Very good"] = "Très bon",
+  ["Good"] = "Bon",
+  ["Fair"] = "Moyen",
+  ["Computers"] = "Machines",
+  ["Manufacturer"] = "Fabricant",
+  ["Handheld"] = "Portable",
+  ["Publishers"] = "Éditeurs",
+  ["Country"] = "Pays",
+  ["Website"] = "Site web",
+  ["United Kingdom"] = "Royaume-Uni",
+  ["Japan"] = "Japon",
+  ["Poor"] = "Mauvais",
+  ["Age"] = "Âge",
+  ["Summary"] = "Résumé",
+  ["To finish"] = "À terminer",
+  ["5 stars"] = "5 étoiles",
+  ["Favorites"] = "Coups de cœur",
+  ["Full record"] = "Fiche complète",
+  ["Quick record"] = "Fiche rapide",
+  ["Tracking"] = "Suivi",
+  ["Seller"] = "Vendeur",
+  ["Number of games"] = "Nombre de jeux",
+  ["Namur flea market"] = "Brocante de Namur",
+  ["Online sale"] = "Vente en ligne",
+})
+local T = doobs.tr
+
+function parameters(ctx)
+  return doobs.parameters(T("Retro collection (demo)"), {
+    database = T("Retro collection"),
+    message = T("Games, computers, publishers and acquisitions with links, calculations and collections"),
+  })
+end
+
+function import(ctx)
+  -- Reused names (fields cited by formulas, collections, forms and records).
+  local NAME, YEAR, TITLE, COVER, RATING = T("Name"), T("Year"), T("Title"), T("Cover"), T("Rating")
+  local MACHINE, PUBLISHER, PRICE, STATE, DONE = T("Computer"), T("Publisher"), T("Purchase price"),
+                                                  T("Condition"), T("Completed")
+  local GAMES, SHIPPING = T("Games"), T("Shipping")
+  local COMPUTER, CONSOLE = T("Home computer"), T("Console")
+  local NEW, VERYGOOD, GOOD, FAIR = T("New"), T("Very good"), T("Good"), T("Fair")
+  local FRANCE = T("France")
+
+  local db = doobs.database()
+
+  -- 1. Computers.
+  local machines = db:addLibrary(T("Computers"), { icon = "desktopcomputer", color = "gray" })
+  machines:addField(NAME)
+  machines:addField(T("Manufacturer"))
+  machines:addField(YEAR, "integer")
+  machines:addField(T("Photo"), "media")
+  machines:addField(T("Type"), "choice", { choices = { COMPUTER, CONSOLE, T("Handheld") } })
+
+  for _, m in ipairs({
+    { "Amstrad CPC 6128", "Amstrad", 1985, COMPUTER }, { "ZX Spectrum", "Sinclair", 1982, COMPUTER },
+    { "Commodore 64", "Commodore", 1982, COMPUTER }, { "Atari ST", "Atari", 1985, COMPUTER },
+    { "Master System", "Sega", 1986, CONSOLE }, { "NES", "Nintendo", 1985, CONSOLE },
+  }) do
+    machines:addRecord({ [NAME] = m[1], [T("Manufacturer")] = m[2], [YEAR] = m[3], [T("Type")] = m[4] })
+  end
+
+  -- 2. Publishers.
+  local publishers = db:addLibrary(T("Publishers"), { icon = "building.2", color = "orange" })
+  publishers:addField(NAME)
+  publishers:addField(T("Country"))
+  publishers:addField(T("Website"), "url")
+
+  local COUNTRY, SITE = T("Country"), T("Website")
+  publishers:addRecord({ [NAME] = "Ubisoft", [COUNTRY] = FRANCE, [SITE] = "https://www.ubisoft.com" })
+  publishers:addRecord({ [NAME] = "Infogrames", [COUNTRY] = FRANCE })
+  publishers:addRecord({ [NAME] = "Ocean Software", [COUNTRY] = T("United Kingdom") })
+  publishers:addRecord({ [NAME] = "Loriciel", [COUNTRY] = FRANCE })
+  publishers:addRecord({ [NAME] = "Nintendo", [COUNTRY] = T("Japan"), [SITE] = "https://www.nintendo.com" })
+
+  -- 3. Games: links to computers and publishers, calculations.
+  local games = db:addLibrary(GAMES, { icon = "gamecontroller", color = "indigo" })
+  games:addField(TITLE)
+  games:addField(YEAR, "integer")
+  games:addField(COVER, "media")
+  games:addField(RATING, "rating")
+  games:addField(MACHINE, "relation", { library = machines })
+  games:addField(PUBLISHER, "relation", { library = publishers })
+  games:addField(PRICE, "currency")
+  games:addField(STATE, "choice", { choices = { NEW, VERYGOOD, GOOD, FAIR, T("Poor") } })
+  games:addField(DONE, "boolean")
+  games:addField(T("URL"), "url")
+  games:addField(T("Age"), "formula", { result = "number", formula = string.format('IF(ISBLANK([%s]); ""; YEAR(TODAY()) - [%s])', YEAR, YEAR) })
+  games:addField(T("Summary"), "formula", { result = "text", formula = string.format('[%s] & " (" & [%s] & ")"', TITLE, YEAR) })
+
+  -- A link cites the key of the target record: here, the value of its first field (the name).
+  for _, g in ipairs({
+    { "Sorcery+", 1985, 4, "Amstrad CPC 6128", "Ocean Software", 12.50, GOOD, true },
+    { "Barbarian", 1987, 5, "Amstrad CPC 6128", "Infogrames", 18.00, VERYGOOD, true },
+    { "Rick Dangerous", 1989, 5, "Atari ST", "Infogrames", 15.00, GOOD, false },
+    { "Skweek", 1989, 4, "Amstrad CPC 6128", "Loriciel", 9.90, FAIR, false },
+    { "Iznogoud", 1987, 3, "Amstrad CPC 6128", "Infogrames", 7.00, GOOD, false },
+    { "Manic Miner", 1983, 4, "ZX Spectrum", "Ocean Software", 6.00, FAIR, true },
+    { "Super Mario Bros.", 1985, 5, "NES", "Nintendo", 25.00, VERYGOOD, true },
+    { "Zelda II", 1987, 4, "NES", "Nintendo", 30.00, GOOD, false },
+    { "Rayman", 1995, 5, "Atari ST", "Ubisoft", 20.00, NEW, false },
+  }) do
+    games:addRecord({ [TITLE] = g[1], [YEAR] = g[2], [RATING] = g[3], [MACHINE] = g[4], [PUBLISHER] = g[5],
+                      [PRICE] = g[6], [STATE] = g[7], [DONE] = g[8] })
+  end
+
+  games:addCollection("CPC", { { MACHINE, "linked", "Amstrad CPC 6128" } })
+  games:addCollection(T("To finish"), { { DONE, "=", false } })
+  games:addCollection(T("5 stars"), { { RATING, "=", 5 } })
+  games:addManualCollection(T("Favorites"), { "Barbarian", "Super Mario Bros." })
+
+  -- No default form: “Full record” (generated), then “Quick record”.
+  games:addGeneratedForm(T("Full record"), 2)
+  games:addForm(T("Quick record"), { columns = 2, theme = "ocean" })
+    :addSection(T("Identification"), { { TITLE, 2 }, { MACHINE, 1 }, { RATING, 1 } })
+    :addSection(T("Tracking"), { { DONE, 1 }, { STATE, 1 }, "-", { COVER, 2 } })
+
+  games:setView("table", { gallery = COVER })
+
+  -- 4. Acquisitions: several games per purchase, total calculated through the link.
+  local DATE, SELLER = T("Date"), T("Seller")
+  local acquisitions = db:addLibrary(T("Acquisitions"), { icon = "cart", color = "green" })
+  acquisitions:addField(DATE, "date")
+  acquisitions:addField(GAMES, "relation", { library = games, many = true })
+  acquisitions:addField(SELLER)
+  acquisitions:addField(SHIPPING, "currency")
+  acquisitions:addField(T("Number of games"), "formula", { result = "number", formula = string.format("COUNT([%s])", GAMES) })
+  acquisitions:addField(T("Total"), "formula", { result = "currency", formula = string.format("SUM([%s]; [%s]) + [%s]", GAMES, PRICE, SHIPPING) })
+  acquisitions:addField(T("Notes"), "longtext")
+
+  acquisitions:addRecord({ [DATE] = "2026-03-14", [GAMES] = { "Sorcery+", "Barbarian", "Rick Dangerous" },
+                           [SELLER] = T("Namur flea market"), [SHIPPING] = 0 })
+  acquisitions:addRecord({ [DATE] = "2026-09-02", [GAMES] = { "Super Mario Bros.", "Zelda II" },
+                           [SELLER] = T("Online sale"), [SHIPPING] = 6.50 })
+
+  return db
+end

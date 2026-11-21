@@ -1,0 +1,11 @@
+{
+  "file": "belgian-localities.luaDoobs",
+  "title": {
+    "en": "Belgian localities",
+    "fr": "Villes et localités belges"
+  },
+  "description": {
+    "en": "Browse Belgian postal localities from ODWB in an automatically refreshed linked library, with postal codes, administrative divisions and coordinates.",
+    "fr": "Consultez les localités postales belges de la source ODWB dans une bibliothèque liée actualisée automatiquement, avec codes postaux, divisions administratives et coordonnées."
+  }
+}

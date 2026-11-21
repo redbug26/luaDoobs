@@ -1,0 +1,204 @@
+-- Project management
+-- Open in Doobs to create four libraries: Contacts, Tasks, Documents and Projects.
+-- No input file, network access or sample personal data. All libraries start empty.
+-- Project membership is maintained only in Projects: select its tasks, documents and contacts.
+-- Attach documents in Doobs after creation. Closed-task progress includes cancelled tasks.
+
+doobs.trInit("fr", {
+  ["Project management"] = "Gestion de projets",
+  ["Projects with tasks, documents and contacts. Add tasks and documents first, then select them in their project."] = "Projets avec tâches, documents et contacts. Créez les tâches et documents, puis sélectionnez-les dans leur projet.",
+  ["Contacts"] = "Contacts",
+  ["Name"] = "Nom",
+  ["Company"] = "Société",
+  ["Role"] = "Fonction",
+  ["Email"] = "E-mail",
+  ["Phone"] = "Téléphone",
+  ["Notes"] = "Notes",
+  ["Contact"] = "Contact",
+  ["Tasks"] = "Tâches",
+  ["Task"] = "Tâche",
+  ["To do"] = "À faire",
+  ["In progress"] = "En cours",
+  ["On hold"] = "En attente",
+  ["Completed"] = "Terminé",
+  ["Cancelled"] = "Annulé",
+  ["Status"] = "Statut",
+  ["Assignees"] = "Responsables",
+  ["Priority"] = "Priorité",
+  ["Start date"] = "Date de début",
+  ["Due date"] = "Échéance",
+  ["Time spent"] = "Temps passé",
+  ["Cost"] = "Coût",
+  ["Description"] = "Description",
+  ["Closed task"] = "Tâche clôturée",
+  ["Overdue"] = "En retard",
+  ["Open tasks"] = "Tâches ouvertes",
+  ["Execution"] = "Exécution",
+  ["Documents"] = "Documents",
+  ["Title"] = "Titre",
+  ["File"] = "Fichier",
+  ["URL"] = "URL",
+  ["Version"] = "Version",
+  ["Added on"] = "Ajouté le",
+  ["Document"] = "Document",
+  ["Projects"] = "Projets",
+  ["Project"] = "Projet",
+  ["Budget"] = "Budget",
+  ["Task count"] = "Nombre de tâches",
+  ["Closed tasks"] = "Tâches clôturées",
+  ["Closed task percentage"] = "Tâches clôturées (%)",
+  ["Task costs"] = "Coût des tâches",
+  ["Remaining budget"] = "Budget restant",
+  ["Open projects"] = "Projets ouverts",
+  ["Participants"] = "Intervenants",
+  ["Work and documents"] = "Travail et documents",
+  ["Budget and notes"] = "Budget et notes",
+})
+local T = doobs.tr
+
+-- Reused labels, localized once.
+local N = {
+  project_management = T("Project management"),
+  introduction = T("Projects with tasks, documents and contacts. Add tasks and documents first, then select them in their project."),
+  contacts = T("Contacts"),
+  name = T("Name"),
+  company = T("Company"),
+  role = T("Role"),
+  email = T("Email"),
+  phone = T("Phone"),
+  notes = T("Notes"),
+  contact = T("Contact"),
+  tasks = T("Tasks"),
+  task = T("Task"),
+  to_do = T("To do"),
+  in_progress = T("In progress"),
+  on_hold = T("On hold"),
+  completed = T("Completed"),
+  cancelled = T("Cancelled"),
+  status = T("Status"),
+  assignees = T("Assignees"),
+  priority = T("Priority"),
+  start_date = T("Start date"),
+  due_date = T("Due date"),
+  time_spent = T("Time spent"),
+  cost = T("Cost"),
+  description = T("Description"),
+  closed_task = T("Closed task"),
+  overdue = T("Overdue"),
+  open_tasks = T("Open tasks"),
+  execution = T("Execution"),
+  documents = T("Documents"),
+  title = T("Title"),
+  file = T("File"),
+  url = T("URL"),
+  version = T("Version"),
+  added_on = T("Added on"),
+  document = T("Document"),
+  projects = T("Projects"),
+  project = T("Project"),
+  budget = T("Budget"),
+  task_count = T("Task count"),
+  closed_tasks = T("Closed tasks"),
+  closed_task_percentage = T("Closed task percentage"),
+  task_costs = T("Task costs"),
+  remaining_budget = T("Remaining budget"),
+  open_projects = T("Open projects"),
+  participants = T("Participants"),
+  work_and_documents = T("Work and documents"),
+  budget_and_notes = T("Budget and notes"),
+}
+
+function parameters(ctx)
+  return doobs.parameters(N.project_management, {
+    database = N.project_management,
+    message = N.introduction,
+  })
+end
+
+function import(ctx)
+  local db = doobs.database()
+
+  -- 1. Contacts and their editable details.
+  local contacts = db:addLibrary(N.contacts, { icon = "person.2", color = "blue" })
+  contacts:addField(N.name, "text")
+  contacts:addField(N.company, "text")
+  contacts:addField(N.role, "text")
+  contacts:addField(N.email, "email")
+  contacts:addField(N.phone, "phone")
+  contacts:addField(N.notes, "longtext")
+  contacts:setTitle(N.name)
+  contacts:setSubtitle(N.company)
+  contacts:setSort(N.name)
+  contacts:setView("table")
+  local form_contacts = contacts:defaultForm({ columns = 2 })
+  form_contacts:addSection(N.contact, { N.name, N.company, N.role, N.email, N.phone, N.notes })
+
+  -- 2. Reusable task records; select them in a project after creating them.
+  local tasks = db:addLibrary(N.tasks, { icon = "checklist", color = "orange" })
+  tasks:addField(N.task, "text")
+  tasks:addField(N.status, "choice", { choices = { N.to_do, N.in_progress, N.on_hold, N.completed, N.cancelled }, default = N.to_do })
+  tasks:addField(N.assignees, "relation", { library = contacts, many = true })
+  tasks:addField(N.priority, "rating", { max = 3 })
+  tasks:addField(N.start_date, "date")
+  tasks:addField(N.due_date, "date")
+  tasks:addField(N.time_spent, "duration")
+  tasks:addField(N.cost, "currency", { currency = "EUR" })
+  tasks:addField(N.description, "longtext")
+  tasks:addField(N.closed_task, "formula", { result = "number", formula = string.format("IF(OR([%s] = \"%s\"; [%s] = \"%s\"); 1; 0)", N.status, N.completed, N.status, N.cancelled) })
+  tasks:addField(N.overdue, "formula", { result = "boolean", formula = string.format("AND([%s] = 0; NOT(ISBLANK([%s])); [%s] < TODAY())", N.closed_task, N.due_date, N.due_date) })
+  tasks:setTitle(N.task)
+  tasks:setSubtitle(N.status)
+  tasks:setSort(N.due_date, N.task)
+  tasks:setView("table")
+  tasks:addCollection(N.open_tasks, { { N.closed_task, "=", 0 } })
+  tasks:addCollection(N.overdue, { { N.overdue, "=", true } })
+  local form_tasks = tasks:defaultForm({ columns = 2 })
+  form_tasks:addSection(N.task, { N.task, N.status, N.priority, N.description })
+  form_tasks:addSection(N.execution, { N.assignees, N.start_date, N.due_date, N.time_spent, N.cost, N.overdue })
+
+  -- 3. Documents: files are attached by the user, never read by this script.
+  local documents = db:addLibrary(N.documents, { icon = "doc.text", color = "gray" })
+  documents:addField(N.title, "text")
+  documents:addField(N.file, "media")
+  documents:addField(N.url, "url")
+  documents:addField(N.version, "text")
+  documents:addField(N.added_on, "date", { default = "@today" })
+  documents:addField(N.notes, "longtext")
+  documents:setTitle(N.title)
+  documents:setSubtitle(N.version)
+  documents:setSort(N.title)
+  documents:setView("table")
+  local form_documents = documents:defaultForm({ columns = 2 })
+  form_documents:addSection(N.document, { N.title, N.file, N.url, N.version, N.added_on, N.notes })
+
+  -- 4. Projects own the task/document lists and aggregate their costs and completion.
+  local projects = db:addLibrary(N.projects, { icon = "briefcase", color = "green" })
+  projects:addField(N.project, "text")
+  projects:addField(N.description, "longtext")
+  projects:addField(N.status, "choice", { choices = { N.to_do, N.in_progress, N.on_hold, N.completed, N.cancelled }, default = N.to_do })
+  projects:addField(N.start_date, "date", { default = "@today" })
+  projects:addField(N.due_date, "date")
+  projects:addField(N.budget, "currency", { currency = "EUR" })
+  projects:addField(N.contacts, "relation", { library = contacts, many = true })
+  projects:addField(N.tasks, "relation", { library = tasks, many = true })
+  projects:addField(N.documents, "relation", { library = documents, many = true })
+  projects:addField(N.task_count, "formula", { result = "number", formula = string.format("COUNT([%s])", N.tasks) })
+  projects:addField(N.closed_tasks, "formula", { result = "number", formula = string.format("SUM([%s]; [%s])", N.tasks, N.closed_task) })
+  projects:addField(N.closed_task_percentage, "formula", { result = "number", formula = string.format("IF([%s] = 0; 0; ROUND(100 * [%s] / [%s]; 0))", N.task_count, N.closed_tasks, N.task_count) })
+  projects:addField(N.task_costs, "formula", { result = "currency", formula = string.format("SUM([%s]; [%s])", N.tasks, N.cost) })
+  projects:addField(N.remaining_budget, "formula", { result = "currency", formula = string.format("IF(ISBLANK([%s]); \"\"; [%s] - [%s])", N.budget, N.budget, N.task_costs) })
+  projects:addField(N.overdue, "formula", { result = "boolean", formula = string.format("AND([%s] <> \"%s\"; [%s] <> \"%s\"; NOT(ISBLANK([%s])); [%s] < TODAY())", N.status, N.completed, N.status, N.cancelled, N.due_date, N.due_date) })
+  projects:addField(N.notes, "longtext")
+  projects:setTitle(N.project)
+  projects:setSubtitle(N.status)
+  projects:setSort(N.due_date, N.project)
+  projects:setView("table")
+  projects:addCollection(N.open_projects, { { N.status, "<>", N.completed }, { N.status, "<>", N.cancelled } })
+  projects:addCollection(N.overdue, { { N.overdue, "=", true } })
+  local form_projects = projects:defaultForm({ columns = 2 })
+  form_projects:addSection(N.project, { N.project, N.status, N.description, N.start_date, N.due_date, N.overdue })
+  form_projects:addSection(N.participants, { N.contacts })
+  form_projects:addSection(N.work_and_documents, { N.tasks, N.task_count, N.closed_tasks, N.closed_task_percentage, N.documents })
+  form_projects:addSection(N.budget_and_notes, { N.budget, N.task_costs, N.remaining_budget, N.notes })
+  return db
+end

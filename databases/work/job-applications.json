@@ -1,0 +1,11 @@
+{
+  "file": "job-applications.luaDoobs",
+  "title": {
+    "en": "Job applications",
+    "fr": "Suivi des candidatures"
+  },
+  "description": {
+    "en": "Follow your job applications with companies and contacts: status from wish list to offer, source, contract, salary range, interviews, follow-ups and documents. Dates are filled in by automatic rules.",
+    "fr": "Suivez vos candidatures avec entreprises et contacts : statut de la liste d’envies à l’offre, source, contrat, fourchette de salaire, entretiens, relances et documents. Les dates sont remplies par des règles automatiques."
+  }
+}

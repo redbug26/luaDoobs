@@ -1,0 +1,11 @@
+{
+  "file": "medication-tracker.luaDoobs",
+  "title": {
+    "en": "Medication tracker",
+    "fr": "Suivi des médicaments"
+  },
+  "description": {
+    "en": "Record medicines, manually maintained stock, prescribed treatment instructions and a dose log. No dosage calculation or notifications.",
+    "fr": "Consignez les médicaments, le stock tenu manuellement, les consignes de traitement prescrites et les prises. Sans calcul de dose ni notifications."
+  }
+}

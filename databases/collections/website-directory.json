@@ -1,0 +1,11 @@
+{
+  "file": "website-directory.luaDoobs",
+  "title": {
+    "en": "Website directory",
+    "fr": "Répertoire de sites Web"
+  },
+  "description": {
+    "en": "Organize bookmarks with multiple categories, descriptions, manually attached screenshots, reviews and ratings.",
+    "fr": "Classez les signets dans plusieurs catégories, avec descriptions, captures ajoutées manuellement, avis et évaluations."
+  }
+}

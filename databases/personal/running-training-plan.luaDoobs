@@ -1,0 +1,189 @@
+-- Running training plan
+-- Open this file with Doobs: it creates a “Training” database with every session of a
+-- progressive plan up to race day. No network access.
+--
+-- Localized with doobs.tr(English text): translations registered by doobs.trInit below.
+
+-- French translations (English is the source language).
+doobs.trInit("fr", {
+  ["Training plan"] = "Plan d’entraînement",
+  ["Training"] = "Entraînement",
+  ["The plan progressively increases the distance, lightens the last week and ends with the race."] = "Le plan augmente progressivement la distance, allège la dernière semaine et se termine par la course.",
+  ["Goal"] = "Objectif",
+  ["Plan start"] = "Début du plan",
+  ["Number of weeks"] = "Nombre de semaines",
+  ["From 4 to 20 weeks; the race takes place on the last day of the plan."] = "De 4 à 20 semaines ; la course a lieu le dernier jour du plan.",
+  ["Sessions per week"] = "Séances par semaine",
+  ["Easy pace (min/km)"] = "Allure d’endurance (min/km)",
+  ["Used to estimate the duration of each session."] = "Sert à estimer la durée de chaque séance.",
+  ["Half marathon"] = "Semi-marathon",
+  ["Easy run"] = "Endurance",
+  ["Intervals"] = "Fractionné",
+  ["Recovery"] = "Récupération",
+  ["Long run"] = "Sortie longue",
+  ["Race"] = "Course",
+  ["W%d – %s"] = "S%d – %s",
+  ["Session"] = "Séance",
+  ["Week"] = "Semaine",
+  ["Planned duration"] = "Durée prévue",
+  ["Done"] = "Fait",
+  ["Actual duration"] = "Durée réelle",
+  ["Feeling"] = "Ressenti",
+  ["Days left"] = "Jours restants",
+  ["Planned"] = "Prévu",
+  ["Completed"] = "Réalisé",
+  ["To do"] = "À faire",
+  ["Long runs"] = "Sorties longues",
+  ["This week"] = "Cette semaine",
+})
+local T = doobs.tr
+
+local S = {
+  title = T("Training plan"),
+  database = T("Training"),
+  message = T("The plan progressively increases the distance, lightens the last week and ends with the race."),
+  goal = T("Goal"),
+  start = T("Plan start"),
+  weeks = T("Number of weeks"),
+  weeksHelp = T("From 4 to 20 weeks; the race takes place on the last day of the plan."),
+  sessionsPerWeek = T("Sessions per week"),
+  pace = T("Easy pace (min/km)"),
+  paceHelp = T("Used to estimate the duration of each session."),
+  half = T("Half marathon"),
+  easy = T("Easy run"),
+  intervals = T("Intervals"),
+  recovery = T("Recovery"),
+  long = T("Long run"),
+  race = T("Race"),
+  week = T("W%d – %s"),
+  session = T("Session"),
+  date = T("Date"),
+  weekField = T("Week"),
+  kind = T("Type"),
+  distance = T("Distance (km)"),
+  planned = T("Planned duration"),
+  done = T("Done"),
+  actual = T("Actual duration"),
+  feeling = T("Feeling"),
+  notes = T("Notes"),
+  daysLeft = T("Days left"),
+  plannedSection = T("Planned"),
+  doneSection = T("Completed"),
+  todo = T("To do"),
+  longRuns = T("Long runs"),
+  thisWeek = T("This week"),
+}
+
+-- Goals in menu order (localized label).
+local GOALS = {
+  { label = "5 km",  race = 5,    long = { 5, 8 },   easy = { 3, 5 } },
+  { label = "10 km", race = 10,   long = { 8, 14 },  easy = { 5, 8 } },
+  { label = S.half,  race = 21.1, long = { 12, 20 }, easy = { 6, 10 } },
+}
+
+-- Session days (0 = first day of the week) and their type.
+local WEEK = {
+  ["3"] = { { 0, S.easy }, { 2, S.intervals }, { 5, S.long } },
+  ["4"] = { { 0, S.easy }, { 2, S.intervals }, { 4, S.recovery }, { 6, S.long } },
+}
+
+function parameters(ctx)
+  local labels = {}
+  for _, g in ipairs(GOALS) do labels[#labels + 1] = g.label end
+  local form = doobs.parameters(S.title, { database = S.database, message = S.message })
+  form:addChoice("objectif", S.goal, labels, { default = "10 km", required = true })
+  form:addDate("debut", S.start, { default = os.date("%Y-%m-%d"), required = true })
+  form:addInteger("semaines", S.weeks, { default = 8, required = true, help = S.weeksHelp })
+  form:addChoice("seances", S.sessionsPerWeek, { "3", "4" }, { default = "3", required = true })
+  form:addNumber("allure", S.pace, { default = 6, help = S.paceHelp })
+  return form
+end
+
+local function round(x, step) return math.floor(x / step + 0.5) * step end
+
+local function addDays(day, n)
+  local y, m, d = day:match("^(%d+)-(%d+)-(%d+)$")
+  local t = os.time({ year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = 12 }) + n * 86400
+  return os.date("%Y-%m-%d", t)
+end
+
+function import(ctx)
+  local p = ctx.params
+  local goal = GOALS[2]
+  for _, g in ipairs(GOALS) do if g.label == p.objectif then goal = g end end
+  local weeks = math.max(4, math.min(20, p.semaines or 8))
+  local pace = (p.allure and p.allure > 2) and p.allure or 6
+  local start = p.debut or os.date("%Y-%m-%d")
+  local plan = WEEK[p.seances] or WEEK["3"]
+
+  local db = doobs.database()
+
+  -- Library and fields.
+  local sessions = db:addLibrary(S.database .. " " .. goal.label, { icon = "figure.run", color = "orange" })
+  sessions:addField(S.session)
+  sessions:addField(S.date, "date")
+  sessions:addField(S.weekField, "integer")
+  sessions:addField(S.kind, "choice", { choices = { S.easy, S.intervals, S.recovery, S.long, S.race } })
+  sessions:addField(S.distance, "decimal")
+  sessions:addField(S.planned, "duration")
+  sessions:addField(S.done, "boolean")
+  sessions:addField(S.actual, "duration")
+  sessions:addField(S.feeling, "rating")
+  sessions:addField(S.notes, "longtext")
+  sessions:addField(S.daysLeft, "formula", {
+    result = "number", formula = string.format('IF([%s]; ""; DAYS([%s]; TODAY()))', S.done, S.date) })
+
+  -- One record per session; planned duration in minutes (distance × pace).
+  local function addSession(day, week, kind, km, name)
+    sessions:addRecord({
+      [S.session] = name or string.format(S.week, week, kind),
+      [S.date] = day, [S.weekField] = week, [S.kind] = kind,
+      [S.distance] = round(km, 0.5),
+      [S.planned] = tostring(math.floor(km * pace + 0.5)),
+      [S.done] = false,
+    })
+  end
+
+  for week = 1, weeks do
+    -- Linear progression, then a lighter week before the race.
+    local progress = weeks > 2 and (week - 1) / (weeks - 2) or 1
+    local taper = week == weeks
+    for _, s in ipairs(plan) do
+      local offset, kind = s[1], s[2]
+      local day = addDays(start, (week - 1) * 7 + offset)
+      if taper and kind == S.long then
+        addSession(addDays(start, weeks * 7 - 1), week, S.race, goal.race, S.race .. " – " .. goal.label)
+      else
+        local km
+        if kind == S.long then
+          km = goal.long[1] + (goal.long[2] - goal.long[1]) * progress
+        elseif kind == S.intervals then
+          km = goal.easy[1] + 1
+        elseif kind == S.recovery then
+          km = goal.easy[1]
+        else
+          km = goal.easy[1] + (goal.easy[2] - goal.easy[1]) * progress
+        end
+        if taper then km = km * 0.6 end
+        addSession(day, week, kind, km)
+      end
+    end
+  end
+
+  -- Presentation.
+  sessions:setTitle(S.session)
+  sessions:setSubtitle(S.date)
+  sessions:setSort(S.date)
+  sessions:setGroup(S.weekField)
+  sessions:defaultForm({ columns = 2, theme = "ocean" })
+    :addSection(S.session, { { S.session, 2 }, S.date, S.weekField, S.kind, S.daysLeft })
+    :addSection(S.plannedSection, { S.distance, S.planned })
+    :addSection(S.doneSection, { S.done, S.actual, S.feeling, S.notes })
+
+  -- Collections.
+  sessions:addCollection(S.todo, { { S.done, "=", false } })
+  sessions:addCollection(S.longRuns, { { S.kind, "=", S.long } })
+  sessions:addCollection(S.thisWeek, { { S.daysLeft, ">=", 0 }, { S.daysLeft, "<", 7 } }, "all")
+
+  return db
+end

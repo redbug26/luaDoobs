@@ -1,0 +1,224 @@
+-- Mini CRM
+-- Open in Doobs to create four empty, related libraries: Contacts, Projects, Exchanges,
+-- and Appointments. No input file, network access, credentials or personal data are needed.
+-- Contacts can have several roles: customer, supplier, acquaintance or prospect.
+-- Link exchanges and appointments to contacts and, optionally, a project.
+-- Follow-up dates and actions are entered manually; no rule or notification is created.
+-- Optional device Contacts integration is configured in the app after creation: the documented
+-- Lua source kinds do not include native Contacts. See the work README for setup instructions.
+
+doobs.trInit("fr", {
+  ["Mini CRM"] = "Mini CRM",
+  ["An empty CRM for contacts, exchanges, appointments and projects. Device Contacts can be added later through the linked-library assistant."] = "Un CRM vide pour les contacts, échanges, rendez-vous et projets. Les Contacts de l’appareil peuvent être ajoutés ensuite via l’assistant de bibliothèque liée.",
+  ["Contacts"] = "Contacts",
+  ["Projects"] = "Projets",
+  ["Exchanges"] = "Échanges",
+  ["Appointments"] = "Rendez-vous",
+  ["First name"] = "Prénom",
+  ["Last name"] = "Nom",
+  ["Display name"] = "Nom affiché",
+  ["Company"] = "Société",
+  ["Job title"] = "Fonction",
+  ["Roles"] = "Catégories",
+  ["Customer"] = "Client",
+  ["Supplier"] = "Fournisseur",
+  ["Acquaintance"] = "Connaissance",
+  ["Prospect"] = "Prospect",
+  ["Phone"] = "Téléphone",
+  ["Mobile"] = "Mobile",
+  ["Email"] = "E-mail",
+  ["Address"] = "Adresse",
+  ["Website"] = "Site web",
+  ["Notes"] = "Notes",
+  ["Archived"] = "Archivé",
+  ["Created on"] = "Créé le",
+  ["Follow-up date"] = "Date de relance",
+  ["Next action"] = "Prochaine action",
+  ["Follow-up due"] = "À relancer",
+  ["Active contacts"] = "Contacts actifs",
+  ["Customers"] = "Clients",
+  ["Suppliers"] = "Fournisseurs",
+  ["Acquaintances"] = "Connaissances",
+  ["Prospects"] = "Prospects",
+  ["Identity"] = "Identité",
+  ["Contact details"] = "Coordonnées",
+  ["Follow-up"] = "Suivi",
+  ["Project"] = "Projet",
+  ["Status"] = "Statut",
+  ["To do"] = "À faire",
+  ["In progress"] = "En cours",
+  ["On hold"] = "En attente",
+  ["Completed"] = "Terminé",
+  ["Cancelled"] = "Annulé",
+  ["Priority"] = "Priorité",
+  ["Start date"] = "Date de début",
+  ["Due date"] = "Échéance",
+  ["Days remaining"] = "Jours restants",
+  ["Overdue"] = "En retard",
+  ["Budget"] = "Budget",
+  ["Description"] = "Description",
+  ["Open projects"] = "Projets ouverts",
+  ["Participants"] = "Participants",
+  ["Schedule"] = "Planning",
+  ["Subject"] = "Objet",
+  ["Date and time"] = "Date et heure",
+  ["Channel"] = "Canal",
+  ["Call"] = "Appel",
+  ["Meeting"] = "Réunion",
+  ["Video call"] = "Visioconférence",
+  ["Message"] = "Message",
+  ["Other"] = "Autre",
+  ["Direction"] = "Sens",
+  ["Incoming"] = "Entrant",
+  ["Outgoing"] = "Sortant",
+  ["Internal"] = "Interne",
+  ["Summary"] = "Compte rendu",
+  ["Follow-up completed"] = "Relance effectuée",
+  ["Pending follow-ups"] = "Relances à effectuer",
+  ["Recent exchanges"] = "Échanges récents",
+  ["Exchange"] = "Échange",
+  ["Starts at"] = "Début",
+  ["Duration"] = "Durée",
+  ["Location"] = "Lieu",
+  ["Video link"] = "Lien de visioconférence",
+  ["Planned"] = "Prévu",
+  ["Held"] = "Effectué",
+  ["Preparation"] = "Préparation",
+  ["Outcome"] = "Bilan",
+  ["Planned appointments"] = "Rendez-vous prévus",
+  ["Appointment"] = "Rendez-vous",
+})
+local T = doobs.tr
+
+function parameters(ctx)
+  return doobs.parameters(T("Mini CRM"), {
+    database = T("Mini CRM"),
+    message = T("An empty CRM for contacts, exchanges, appointments and projects. Device Contacts can be added later through the linked-library assistant."),
+  })
+end
+
+function import(ctx)
+  local CONTACTS, PROJECT, STATUS = T("Contacts"), T("Project"), T("Status")
+  local FIRST, LAST, FULL, COMPANY = T("First name"), T("Last name"), T("Display name"), T("Company")
+  local ROLES, ARCHIVED, NOTES = T("Roles"), T("Archived"), T("Notes")
+  local CUSTOMER, SUPPLIER, ACQUAINTANCE, PROSPECT = T("Customer"), T("Supplier"), T("Acquaintance"), T("Prospect")
+  local FOLLOW_DATE, ACTION, FOLLOW_DUE = T("Follow-up date"), T("Next action"), T("Follow-up due")
+  local TODO, DOING, WAITING, DONE, CANCELLED = T("To do"), T("In progress"), T("On hold"), T("Completed"), T("Cancelled")
+  local DUE, OVERDUE = T("Due date"), T("Overdue")
+  local SUBJECT, DATE_TIME, SUMMARY = T("Subject"), T("Date and time"), T("Summary")
+  local FOLLOW_DONE = T("Follow-up completed")
+  local STARTS, PLANNED, HELD = T("Starts at"), T("Planned"), T("Held")
+
+  local db = doobs.database()
+
+  -- 1. Editable CRM contacts. A company-only record is supported by the title formula.
+  local contacts = db:addLibrary(CONTACTS, { icon = "person.2", color = "blue" })
+  contacts:addField(FIRST)
+  contacts:addField(LAST)
+  contacts:addField(COMPANY)
+  contacts:addField(FULL, "formula", { result = "text", formula = string.format(
+    'IF(ISBLANK(TRIM([%s] & " " & [%s])); [%s]; TRIM([%s] & " " & [%s]))', FIRST, LAST, COMPANY, FIRST, LAST) })
+  contacts:addField(T("Job title"))
+  contacts:addField(ROLES, "multichoice", { choices = { CUSTOMER, SUPPLIER, ACQUAINTANCE, PROSPECT } })
+  contacts:addField(T("Phone"), "phone")
+  contacts:addField(T("Mobile"), "phone")
+  contacts:addField(T("Email"), "email")
+  contacts:addField(T("Address"), "address")
+  contacts:addField(T("Website"), "url")
+  contacts:addField(T("Created on"), "date", { default = "@today" })
+  contacts:addField(ARCHIVED, "boolean", { default = false })
+  contacts:addField(FOLLOW_DATE, "date")
+  contacts:addField(ACTION, "longtext")
+  contacts:addField(FOLLOW_DUE, "formula", { result = "boolean", formula = string.format(
+    'AND(NOT([%s]); NOT(ISBLANK([%s])); [%s] <= TODAY())', ARCHIVED, FOLLOW_DATE, FOLLOW_DATE) })
+  contacts:addField(NOTES, "longtext")
+  contacts:setTitle(FULL)
+  contacts:setSubtitle(COMPANY)
+  contacts:setSort(FULL)
+  contacts:addCollection(T("Active contacts"), { { ARCHIVED, "=", false } })
+  contacts:addCollection(T("Customers"), { { ROLES, "contains", CUSTOMER }, { ARCHIVED, "=", false } })
+  contacts:addCollection(T("Suppliers"), { { ROLES, "contains", SUPPLIER }, { ARCHIVED, "=", false } })
+  contacts:addCollection(T("Acquaintances"), { { ROLES, "contains", ACQUAINTANCE }, { ARCHIVED, "=", false } })
+  contacts:addCollection(T("Prospects"), { { ROLES, "contains", PROSPECT }, { ARCHIVED, "=", false } })
+  contacts:addCollection(FOLLOW_DUE, { { FOLLOW_DUE, "=", true } })
+  contacts:addCollection(T("Archived"), { { ARCHIVED, "=", true } })
+  contacts:defaultForm({ columns = 2 })
+    :addSection(T("Identity"), { FIRST, LAST, COMPANY, T("Job title"), { ROLES, 2 } })
+    :addSection(T("Contact details"), { T("Phone"), T("Mobile"), T("Email"), T("Website"), T("Address") })
+    :addSection(T("Follow-up"), { FOLLOW_DATE, FOLLOW_DUE, ACTION, ARCHIVED, T("Created on"), NOTES })
+
+  -- 2. Projects link to all participants, including customers and suppliers.
+  local projects = db:addLibrary(T("Projects"), { icon = "briefcase", color = "green" })
+  projects:addField(PROJECT)
+  projects:addField(CONTACTS, "relation", { library = contacts, many = true })
+  projects:addField(STATUS, "choice", { choices = { TODO, DOING, WAITING, DONE, CANCELLED }, default = TODO })
+  projects:addField(T("Priority"), "rating", { max = 3 })
+  projects:addField(T("Start date"), "date", { default = "@today" })
+  projects:addField(DUE, "date")
+  projects:addField(T("Days remaining"), "formula", { result = "number", formula = string.format(
+    'IF(ISBLANK([%s]); ""; DAYS([%s]; TODAY()))', DUE, DUE) })
+  projects:addField(OVERDUE, "formula", { result = "boolean", formula = string.format(
+    'AND([%s] <> "%s"; [%s] <> "%s"; NOT(ISBLANK([%s])); [%s] < TODAY())', STATUS, DONE, STATUS, CANCELLED, DUE, DUE) })
+  projects:addField(T("Budget"), "currency", { currency = "EUR" })
+  projects:addField(T("Description"), "longtext")
+  projects:addField(NOTES, "longtext")
+  projects:setTitle(PROJECT)
+  projects:setSubtitle(STATUS)
+  projects:setSort(DUE, PROJECT)
+  projects:addCollection(T("Open projects"), { { STATUS, "<>", DONE }, { STATUS, "<>", CANCELLED } })
+  projects:addCollection(DOING, { { STATUS, "=", DOING } })
+  projects:addCollection(OVERDUE, { { OVERDUE, "=", true } })
+  projects:defaultForm({ columns = 2 })
+    :addSection(PROJECT, { { PROJECT, 2 }, STATUS, T("Priority"), T("Description") })
+    :addSection(T("Participants"), { { CONTACTS, 2 } })
+    :addSection(T("Schedule"), { T("Start date"), DUE, T("Days remaining"), OVERDUE, T("Budget"), NOTES })
+
+  -- 3. One exchange per interaction: the history stays separate from contact notes.
+  local exchanges = db:addLibrary(T("Exchanges"), { icon = "bubble.left.and.bubble.right", color = "orange" })
+  exchanges:addField(SUBJECT)
+  exchanges:addField(DATE_TIME, "datetime")
+  exchanges:addField(CONTACTS, "relation", { library = contacts, many = true })
+  exchanges:addField(PROJECT, "relation", { library = projects })
+  exchanges:addField(T("Channel"), "choice", { choices = { T("Call"), T("Email"), T("Meeting"), T("Video call"), T("Message"), T("Other") } })
+  exchanges:addField(T("Direction"), "choice", { choices = { T("Incoming"), T("Outgoing"), T("Internal") } })
+  exchanges:addField(SUMMARY, "longtext")
+  exchanges:addField(FOLLOW_DATE, "date")
+  exchanges:addField(ACTION, "longtext")
+  exchanges:addField(FOLLOW_DONE, "boolean", { default = false })
+  exchanges:addField(FOLLOW_DUE, "formula", { result = "boolean", formula = string.format(
+    'AND(NOT([%s]); NOT(ISBLANK([%s])); [%s] <= TODAY())', FOLLOW_DONE, FOLLOW_DATE, FOLLOW_DATE) })
+  exchanges:setTitle(SUBJECT)
+  exchanges:setSubtitle(DATE_TIME)
+  exchanges:setSort("-" .. DATE_TIME)
+  exchanges:addCollection(T("Pending follow-ups"), { { FOLLOW_DATE, "notempty" }, { FOLLOW_DONE, "=", false } })
+  exchanges:addCollection(FOLLOW_DUE, { { FOLLOW_DUE, "=", true } })
+  exchanges:addCollection(T("Recent exchanges"), { { DATE_TIME, "lastdays", 30 } })
+  exchanges:defaultForm({ columns = 2 })
+    :addSection(T("Exchange"), { { SUBJECT, 2 }, DATE_TIME, T("Channel"), T("Direction"), SUMMARY })
+    :addSection(T("Participants"), { { CONTACTS, 2 }, { PROJECT, 2 } })
+    :addSection(T("Follow-up"), { FOLLOW_DATE, FOLLOW_DONE, FOLLOW_DUE, ACTION })
+
+  -- 4. Appointments have their own status, preparation and outcome.
+  local appointments = db:addLibrary(T("Appointments"), { icon = "calendar", color = "purple" })
+  appointments:addField(SUBJECT)
+  appointments:addField(STARTS, "datetime")
+  appointments:addField(T("Duration"), "duration")
+  appointments:addField(CONTACTS, "relation", { library = contacts, many = true })
+  appointments:addField(PROJECT, "relation", { library = projects })
+  appointments:addField(STATUS, "choice", { choices = { PLANNED, HELD, CANCELLED }, default = PLANNED })
+  appointments:addField(T("Location"))
+  appointments:addField(T("Video link"), "url")
+  appointments:addField(T("Preparation"), "longtext")
+  appointments:addField(T("Outcome"), "longtext")
+  appointments:setTitle(SUBJECT)
+  appointments:setSubtitle(STARTS)
+  appointments:setSort(STARTS)
+  appointments:setView("calendar")
+  appointments:addCollection(T("Planned appointments"), { { STATUS, "=", PLANNED } })
+  appointments:defaultForm({ columns = 2 })
+    :addSection(T("Appointment"), { { SUBJECT, 2 }, STARTS, T("Duration"), STATUS, T("Location"), T("Video link") })
+    :addSection(T("Participants"), { { CONTACTS, 2 }, { PROJECT, 2 } })
+    :addSection(T("Preparation"), { T("Preparation"), T("Outcome") })
+
+  return db
+end

@@ -1,0 +1,11 @@
+{
+  "file": "recipes.luaDoobs",
+  "title": {
+    "en": "Recipes",
+    "fr": "Recettes"
+  },
+  "description": {
+    "en": "Organize recipes with photos, ingredients, steps, dietary categories, preparation times and ratings.",
+    "fr": "Organisez les recettes avec photos, ingrédients, étapes, catégories alimentaires, temps de préparation et notes."
+  }
+}

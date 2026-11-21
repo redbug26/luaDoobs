@@ -1,0 +1,11 @@
+{
+  "file": "parcel-tracking.luaDoobs",
+  "title": {
+    "en": "Parcel tracking",
+    "fr": "Suivi des colis"
+  },
+  "description": {
+    "en": "Track incoming and outgoing parcels: carrier, tracking number, status, order, costs, expected and delivery dates, delivery steps and recipients. The tracking link and the dates are filled in by automatic rules.",
+    "fr": "Suivez les colis reçus et envoyés : transporteur, numéro de suivi, statut, commande, frais, dates prévue et de livraison, étapes et destinataires. Le lien de suivi et les dates sont remplis par des règles automatiques."
+  }
+}

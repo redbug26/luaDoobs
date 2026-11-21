@@ -1,0 +1,217 @@
+-- Gift tracker
+-- Open in Doobs to create People, Occasions and Gifts: ideas, gifts to buy, bought, wrapped and given,
+-- gifts received and thank-you notes, budgets per occasion and upcoming birthdays.
+-- Each gift is linked to a person and an occasion. Birthdays are calculated from the date of birth.
+-- Automatic rules (created with the database): the purchase and gift dates are filled with today’s
+-- date when the status changes; choosing “Received” marks the gift as received today.
+-- Parameters: create the coming occasions (New Year, Valentine’s Day, Saint Nicholas, Christmas).
+-- No network, no sample people.
+
+doobs.trInit("fr", {
+  ["Gift tracker"] = "Suivi des cadeaux",
+  ["My gifts"] = "Mes cadeaux",
+  ["Gift ideas, purchases and gifts given or received, by person and occasion, with budgets and upcoming birthdays."] = "Idées, achats et cadeaux offerts ou reçus, par personne et par occasion, avec budgets et anniversaires à venir.",
+  ["Create the coming occasions"] = "Créer les prochaines occasions",
+  ["New Year, Valentine’s Day and Christmas of the next twelve months."] = "Nouvel an, Saint-Valentin et Noël des douze prochains mois.",
+  ["Include Saint Nicholas (6 December)"] = "Inclure la Saint-Nicolas (6 décembre)",
+  ["Gift budget per occasion"] = "Budget cadeaux par occasion",
+  -- People
+  ["People"] = "Personnes",
+  ["Person"] = "Personne",
+  ["Name"] = "Nom",
+  ["Relationship"] = "Lien",
+  ["Family"] = "Famille",
+  ["Partner"] = "Conjoint",
+  ["Friend"] = "Ami",
+  ["Colleague"] = "Collègue",
+  ["Other"] = "Autre",
+  ["Date of birth"] = "Date de naissance",
+  ["Next birthday"] = "Prochain anniversaire",
+  ["Days until birthday"] = "Jours avant l’anniversaire",
+  ["Turns"] = "Âge atteint",
+  ["Interests"] = "Centres d’intérêt",
+  ["Wish list"] = "Liste d’envies",
+  ["Sizes"] = "Tailles",
+  ["Address"] = "Adresse",
+  ["Notes"] = "Notes",
+  ["Ideas"] = "Idées",
+  ["Birthdays in the next 30 days"] = "Anniversaires dans les 30 jours",
+  -- Occasions
+  ["Occasions"] = "Occasions",
+  ["Occasion"] = "Occasion",
+  ["Date"] = "Date",
+  ["Type"] = "Type",
+  ["Birthday"] = "Anniversaire",
+  ["Christmas"] = "Noël",
+  ["Saint Nicholas"] = "Saint-Nicolas",
+  ["New Year"] = "Nouvel an",
+  ["Valentine’s Day"] = "Saint-Valentin",
+  ["Mother’s Day"] = "Fête des mères",
+  ["Father’s Day"] = "Fête des pères",
+  ["Wedding"] = "Mariage",
+  ["Birth"] = "Naissance",
+  ["Housewarming"] = "Crémaillère",
+  ["Budget"] = "Budget",
+  ["Days left"] = "Jours restants",
+  ["Upcoming"] = "À venir",
+  -- Gifts
+  ["Gifts"] = "Cadeaux",
+  ["Gift"] = "Cadeau",
+  ["Given or received"] = "Offert ou reçu",
+  ["Given"] = "Offert",
+  ["Received"] = "Reçu",
+  ["For or from"] = "Pour ou de",
+  ["Status"] = "Statut",
+  ["Idea"] = "Idée",
+  ["To buy"] = "À acheter",
+  ["Ordered"] = "Commandé",
+  ["Bought"] = "Acheté",
+  ["Wrapped"] = "Emballé",
+  ["Price"] = "Prix",
+  ["Shop"] = "Boutique",
+  ["Link"] = "Lien",
+  ["Picture (web)"] = "Image (web)",
+  ["Photo"] = "Photo",
+  ["Bought on"] = "Acheté le",
+  ["Given or received on"] = "Offert ou reçu le",
+  ["Thank-you sent"] = "Remerciement envoyé",
+  ["Purchase"] = "Achat",
+  ["To give"] = "À offrir",
+  ["Thank-you to send"] = "Remerciements à envoyer",
+  ["Given in the last 12 months"] = "Offerts ces 12 derniers mois",
+  -- Rules
+  ["Purchase date"] = "Date d’achat",
+  ["Gift date"] = "Date du cadeau",
+  ["Gift received"] = "Cadeau reçu",
+})
+local T = doobs.tr
+
+--- "YYYY-MM-DD" of the next occurrence of month/day, today included.
+local function nextDate(month, day)
+  local now = os.date("*t")
+  local year = (month < now.month or (month == now.month and day < now.day)) and now.year + 1 or now.year
+  return string.format("%04d-%02d-%02d", year, month, day)
+end
+
+function parameters(ctx)
+  local form = doobs.parameters(T("Gift tracker"), {
+    database = T("My gifts"),
+    message = T("Gift ideas, purchases and gifts given or received, by person and occasion, with budgets and upcoming birthdays."),
+  })
+  form:addBoolean("occasions", T("Create the coming occasions"), { default = true,
+    help = T("New Year, Valentine’s Day and Christmas of the next twelve months.") })
+  form:addBoolean("nicholas", T("Include Saint Nicholas (6 December)"), { default = false })
+  form:addNumber("budget", T("Gift budget per occasion"), { placeholder = "150" })
+  return form
+end
+
+function import(ctx)
+  -- Reused names, localized once.
+  local NAME, RELATIONSHIP, BIRTH, NEXT_BIRTHDAY = T("Name"), T("Relationship"), T("Date of birth"), T("Next birthday")
+  local DAYS_BIRTHDAY, TURNS, INTERESTS, WISHES = T("Days until birthday"), T("Turns"), T("Interests"), T("Wish list")
+  local SIZES, ADDRESS, NOTES = T("Sizes"), T("Address"), T("Notes")
+  local OCCASION, DATE, TYPE, BUDGET, DAYS_LEFT = T("Occasion"), T("Date"), T("Type"), T("Budget"), T("Days left")
+  local GIFT, WAY, PERSON, STATUS, PRICE = T("Gift"), T("Given or received"), T("For or from"), T("Status"), T("Price")
+  local SHOP, LINK, PICTURE, PHOTO = T("Shop"), T("Link"), T("Picture (web)"), T("Photo")
+  local BOUGHT_ON, GIVEN_ON, THANKED = T("Bought on"), T("Given or received on"), T("Thank-you sent")
+  local GIVEN, RECEIVED = T("Given"), T("Received")
+  local IDEA, TO_BUY, ORDERED, BOUGHT, WRAPPED = T("Idea"), T("To buy"), T("Ordered"), T("Bought"), T("Wrapped")
+  local CHRISTMAS, NICHOLAS, NEW_YEAR, VALENTINE = T("Christmas"), T("Saint Nicholas"), T("New Year"), T("Valentine’s Day")
+
+  local db = doobs.database()
+
+  -- People: date of birth, next birthday and age reached, interests and sizes.
+  local people = db:addLibrary(T("People"), { icon = "person.2", color = "pink" })
+  people:addField(NAME)
+  people:addField(RELATIONSHIP, "choice", { choices = { T("Family"), T("Partner"), T("Friend"), T("Colleague"), T("Other") } })
+  people:addField(BIRTH, "date")
+  -- This year’s birthday, or next year’s once it has passed.
+  people:addField(NEXT_BIRTHDAY, "formula", { result = "date", formula = string.format(
+    'IF(ISBLANK([%s]); ""; IF(DATEADD([%s]; YEAR(TODAY()) - YEAR([%s]); "year") < TODAY(); DATEADD([%s]; YEAR(TODAY()) - YEAR([%s]) + 1; "year"); DATEADD([%s]; YEAR(TODAY()) - YEAR([%s]); "year")))',
+    BIRTH, BIRTH, BIRTH, BIRTH, BIRTH, BIRTH, BIRTH) })
+  people:addField(DAYS_BIRTHDAY, "formula", { result = "number", formula = string.format(
+    'IF(ISBLANK([%s]); ""; DAYS([%s]; TODAY()))', NEXT_BIRTHDAY, NEXT_BIRTHDAY) })
+  people:addField(TURNS, "formula", { result = "number", formula = string.format(
+    'IF(ISBLANK([%s]); ""; YEAR([%s]) - YEAR([%s]))', NEXT_BIRTHDAY, NEXT_BIRTHDAY, BIRTH) })
+  people:addField(INTERESTS, "longtext")
+  people:addField(WISHES, "longtext")
+  people:addField(SIZES)
+  people:addField(ADDRESS, "address")
+  people:addField(NOTES, "longtext")
+  people:setTitle(NAME)
+  people:setSubtitle(RELATIONSHIP)
+  people:setSort(NAME)
+  people:defaultForm({ columns = 2 })
+    :addSection(T("Person"), { { NAME, 2 }, RELATIONSHIP, BIRTH, NEXT_BIRTHDAY, DAYS_BIRTHDAY, TURNS })
+    :addSection(T("Ideas"), { INTERESTS, WISHES, SIZES, ADDRESS, NOTES })
+  people:addCollection(T("Birthdays in the next 30 days"), { { DAYS_BIRTHDAY, "<=", 30 } })
+
+  -- Occasions: date, type and budget; calendar view.
+  local occasions = db:addLibrary(T("Occasions"), { icon = "gift", color = "red" })
+  occasions:addField(OCCASION)
+  occasions:addField(DATE, "date")
+  occasions:addField(TYPE, "choice", { choices = { T("Birthday"), CHRISTMAS, NICHOLAS, NEW_YEAR, VALENTINE,
+    T("Mother’s Day"), T("Father’s Day"), T("Wedding"), T("Birth"), T("Housewarming"), T("Other") } })
+  occasions:addField(BUDGET, "currency", { currency = "EUR", default = ctx.params.budget })
+  occasions:addField(DAYS_LEFT, "formula", { result = "number", formula = string.format(
+    'IF(ISBLANK([%s]); ""; DAYS([%s]; TODAY()))', DATE, DATE) })
+  occasions:addField(NOTES, "longtext")
+  occasions:setTitle(OCCASION)
+  occasions:setSubtitle(DATE)
+  occasions:setSort(DATE)
+  occasions:setView("calendar")
+  occasions:defaultForm({ columns = 2 }):addSection(T("Occasion"), { { OCCASION, 2 }, DATE, TYPE, BUDGET, DAYS_LEFT, NOTES })
+  occasions:addCollection(T("Upcoming"), { { DAYS_LEFT, ">=", 0 } })
+
+  if ctx.params.occasions then
+    -- Coming occurrences, named with their year (“Christmas 2026”).
+    local coming = { { NEW_YEAR, 1, 1 }, { VALENTINE, 2, 14 }, { CHRISTMAS, 12, 25 } }
+    if ctx.params.nicholas then table.insert(coming, 3, { NICHOLAS, 12, 6 }) end
+    for _, o in ipairs(coming) do
+      local day = nextDate(o[2], o[3])
+      occasions:addRecord({ [OCCASION] = o[1] .. " " .. day:sub(1, 4), [DATE] = day, [TYPE] = o[1], [BUDGET] = ctx.params.budget })
+    end
+  end
+
+  -- Gifts: one record per gift given or received.
+  local gifts = db:addLibrary(T("Gifts"), { icon = "gift.fill", color = "purple" })
+  gifts:addField(GIFT)
+  gifts:addField(WAY, "choice", { choices = { GIVEN, RECEIVED }, default = GIVEN })
+  gifts:addField(PERSON, "relation", { library = people, many = true })
+  gifts:addField(OCCASION, "relation", { library = occasions })
+  gifts:addField(STATUS, "choice", { choices = { IDEA, TO_BUY, ORDERED, BOUGHT, WRAPPED, GIVEN, RECEIVED }, default = IDEA })
+  gifts:addField(PRICE, "currency", { currency = "EUR" })
+  gifts:addField(SHOP)
+  gifts:addField(LINK, "url")
+  gifts:addField(PICTURE, "imageurl")
+  gifts:addField(PHOTO, "media")
+  gifts:addField(BOUGHT_ON, "date")
+  gifts:addField(GIVEN_ON, "date")
+  gifts:addField(THANKED, "boolean", { default = false })
+  gifts:addField(NOTES, "longtext")
+  gifts:setTitle(GIFT)
+  gifts:setSubtitle(STATUS)
+  gifts:setSort(GIFT)
+  gifts:setGroup(STATUS)
+  gifts:setView("split")
+  gifts:defaultForm({ columns = 2 })
+    :addSection(T("Gift"), { { GIFT, 2 }, WAY, STATUS, PERSON, OCCASION })
+    :addSection(T("Purchase"), { PRICE, SHOP, { LINK, 2 }, BOUGHT_ON, GIVEN_ON, THANKED })
+    :addSection(PHOTO, { PICTURE, PHOTO, NOTES })
+
+  gifts:addCollection(T("Ideas"), { { STATUS, "=", IDEA } })
+  gifts:addCollection(T("To buy"), { { STATUS, "=", TO_BUY } })
+  gifts:addCollection(T("To give"), { { STATUS, "=", BOUGHT }, { STATUS, "=", ORDERED }, { STATUS, "=", WRAPPED } }, "any")
+  gifts:addCollection(T("Thank-you to send"), { { WAY, "=", RECEIVED }, { THANKED, "=", false } })
+  gifts:addCollection(T("Given in the last 12 months"), { { WAY, "=", GIVEN }, { GIVEN_ON, "lastdays", 365 } })
+
+  -- Automatic rules, applied in this order each time a gift is saved.
+  gifts:addRule(T("Gift received"), { when = { WAY },
+    condition = { { WAY, "=", RECEIVED }, { GIVEN_ON, "empty" } }, set = { [STATUS] = RECEIVED, [GIVEN_ON] = "@today" } })
+  gifts:addRule(T("Purchase date"), { when = { STATUS },
+    condition = { { STATUS, "=", BOUGHT }, { BOUGHT_ON, "empty" } }, set = { [BOUGHT_ON] = "@today" } })
+  gifts:addRule(T("Gift date"), { when = { STATUS },
+    condition = { { STATUS, "=", GIVEN }, { GIVEN_ON, "empty" } }, set = { [GIVEN_ON] = "@today" } })
+
+  return db
+end

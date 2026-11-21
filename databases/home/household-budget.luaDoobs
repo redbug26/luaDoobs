@@ -1,0 +1,143 @@
+-- Household budget
+-- Open this file with Doobs: it creates a “Budget” database with one row per category and
+-- month (planned amount), to complete with actual amounts. No network access.
+--
+-- Localized with doobs.tr(English text): translations registered by doobs.trInit below.
+
+-- French translations (English is the source language).
+doobs.trInit("fr", {
+  ["Household budget"] = "Budget du foyer",
+  ["One row per category and month, with the planned amount. You will then enter the actual amounts and check the paid expenses."] =
+    "Une ligne par catégorie et par mois, avec le montant prévu. Vous saisirez ensuite les montants réels et cocherez les dépenses payées.",
+  ["Year"] = "Année", ["First month"] = "Premier mois", ["Categories"] = "Catégories", ["Monthly income"] = "Revenu mensuel",
+  ["Optional"] = "Facultatif",
+  ["One category per line: “Name = planned monthly amount”."] = "Une catégorie par ligne : « Nom = montant mensuel prévu ».",
+  ["If set, an “Income” row is added every month."] = "S’il est indiqué, une ligne « Revenu » est ajoutée chaque mois.",
+  ["Line ignored: “%s”"] = "Ligne ignorée : « %s »",
+  ["No valid category: write “Name = amount” on each line."] = "Aucune catégorie valide : écrivez « Nom = montant » sur chaque ligne.",
+  ["Label"] = "Libellé", ["Month"] = "Mois", ["Category"] = "Catégorie", ["Type"] = "Sens",
+  ["Planned"] = "Prévu", ["Actual"] = "Réel", ["Paid"] = "Payé", ["Note"] = "Note", ["Difference"] = "Écart",
+  ["Income"] = "Revenu", ["Expense"] = "Dépense",
+  ["Row"] = "Ligne", ["Amounts"] = "Montants", ["Notes"] = "Notes",
+  ["To pay"] = "À payer", ["All income"] = "Revenus", ["Actual amount missing"] = "Montant réel manquant",
+  ["January"] = "Janvier", ["February"] = "Février", ["March"] = "Mars", ["April"] = "Avril", ["May"] = "Mai", ["June"] = "Juin",
+  ["July"] = "Juillet", ["August"] = "Août", ["September"] = "Septembre", ["October"] = "Octobre",
+  ["November"] = "Novembre", ["December"] = "Décembre",
+  ["Housing = 850\nGroceries = 400\nTransport = 150\nEnergy = 120\nInsurance = 90\nLeisure = 100\nSavings = 200"] =
+    "Logement = 850\nCourses = 400\nTransport = 150\nÉnergie = 120\nAssurances = 90\nLoisirs = 100\nÉpargne = 200",
+})
+local T = doobs.tr
+
+local S = {
+  title = T("Household budget"), budget = T("Budget"),
+  message = T("One row per category and month, with the planned amount. You will then enter the actual amounts and check the paid expenses."),
+  year = T("Year"), first = T("First month"), categories = T("Categories"), income = T("Monthly income"),
+  optional = T("Optional"),
+  categoriesHelp = T("One category per line: “Name = planned monthly amount”."),
+  incomeHelp = T("If set, an “Income” row is added every month."),
+  ignored = T("Line ignored: “%s”"),
+  noCategory = T("No valid category: write “Name = amount” on each line."),
+  label = T("Label"), month = T("Month"), category = T("Category"), kind = T("Type"),
+  planned = T("Planned"), actual = T("Actual"), paid = T("Paid"), note = T("Note"), gap = T("Difference"),
+  incomeValue = T("Income"), expense = T("Expense"),
+  row = T("Row"), amounts = T("Amounts"), notes = T("Notes"),
+  toPay = T("To pay"), incomes = T("All income"), missing = T("Actual amount missing"),
+  months = {},
+  defaults = T("Housing = 850\nGroceries = 400\nTransport = 150\nEnergy = 120\nInsurance = 90\nLeisure = 100\nSavings = 200"),
+}
+for i, m in ipairs({ "January", "February", "March", "April", "May", "June",
+                     "July", "August", "September", "October", "November", "December" }) do
+  S.months[i] = T(m)
+end
+
+local function trim(s)
+  return (s:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+-- Form shown before the database is created.
+function parameters(ctx)
+  local year = tonumber(os.date("%Y"))
+  local form = doobs.parameters(S.title, { database = S.budget .. " " .. year, message = S.message })
+  form:addInteger("annee", S.year, { default = year, required = true })
+  form:addChoice("debut", S.first, S.months, { default = S.months[tonumber(os.date("%m"))], required = true })
+  form:addLongText("categories", S.categories, { default = S.defaults, help = S.categoriesHelp })
+  form:addNumber("revenu", S.income, { placeholder = S.optional, help = S.incomeHelp })
+  return form
+end
+
+-- “Name = amount” per line; invalid lines are reported.
+local function parseCategories(text, db)
+  local list = {}
+  for line in (text .. "\n"):gmatch("([^\n]*)\n") do
+    line = trim(line)
+    if line ~= "" then
+      local name, amount = line:match("^(.-)%s*=%s*([%d%.,%s]+)$")
+      local value = amount and tonumber((amount:gsub("%s", ""):gsub(",", ".")))
+      if name and name ~= "" and value then
+        list[#list + 1] = { name = trim(name), amount = value }
+      else
+        db:addWarning(string.format(S.ignored, line))
+      end
+    end
+  end
+  return list
+end
+
+function import(ctx)
+  local p = ctx.params
+  local year = p.annee or tonumber(os.date("%Y"))
+  local first = 1
+  for i, m in ipairs(S.months) do if m == p.debut then first = i end end
+
+  local db = doobs.database()
+
+  -- Categories entered in the form (invalid lines reported with db:addWarning).
+  local categories = parseCategories(p.categories or S.defaults, db)
+  if #categories == 0 then error(S.noCategory) end
+  local categoryNames = {}
+  if p.revenu then categoryNames[1] = S.incomeValue end
+  for _, c in ipairs(categories) do categoryNames[#categoryNames + 1] = c.name end
+
+  -- Library and fields.
+  local budget = db:addLibrary(S.budget .. " " .. year, { icon = "eurosign.circle", color = "green" })
+  budget:addField(S.label)
+  budget:addField(S.month, "date")
+  budget:addField(S.category, "choice", { choices = categoryNames })
+  budget:addField(S.kind, "choice", { choices = { S.incomeValue, S.expense } })
+  budget:addField(S.planned, "currency")
+  budget:addField(S.actual, "currency")
+  budget:addField(S.paid, "boolean")
+  budget:addField(S.note, "longtext")
+  budget:addField(S.gap, "formula", {
+    result = "currency", formula = string.format('IF(ISBLANK([%s]); ""; [%s] - [%s])', S.actual, S.actual, S.planned) })
+
+  -- One record per category and month, from the chosen first month to December.
+  for month = first, 12 do
+    local day = string.format("%04d-%02d-01", year, month)
+    if p.revenu then
+      budget:addRecord({ [S.label] = S.incomeValue .. " – " .. S.months[month], [S.month] = day, [S.category] = S.incomeValue,
+                         [S.kind] = S.incomeValue, [S.planned] = p.revenu, [S.paid] = false })
+    end
+    for _, c in ipairs(categories) do
+      budget:addRecord({ [S.label] = c.name .. " – " .. S.months[month], [S.month] = day, [S.category] = c.name,
+                         [S.kind] = S.expense, [S.planned] = c.amount, [S.paid] = false })
+    end
+  end
+
+  -- Presentation.
+  budget:setTitle(S.label)
+  budget:setSubtitle(S.category)
+  budget:setSort(S.month, S.kind, S.category)
+  budget:setGroup(S.month)
+  budget:defaultForm({ columns = 2, theme = "forest" })
+    :addSection(S.row, { { S.label, 2 }, S.month, S.category, S.kind, S.paid })
+    :addSection(S.amounts, { S.planned, S.actual, S.gap })
+    :addSection(S.notes, { S.note })
+
+  -- Collections.
+  budget:addCollection(S.toPay, { { S.kind, "=", S.expense }, { S.paid, "=", false } })
+  budget:addCollection(S.incomes, { { S.kind, "=", S.incomeValue } })
+  budget:addCollection(S.missing, { { S.actual, "empty" } })
+
+  return db
+end

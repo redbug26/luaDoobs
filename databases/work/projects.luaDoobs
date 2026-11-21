@@ -1,0 +1,64 @@
+-- Official Doobs template: Projects
+-- Project, serial number, status, due date, priority (out of 3); calculated days left.
+-- Localized with doobs.tr(English text): translations registered by doobs.trInit below.
+
+--[[doobs-template
+kind = library
+order = 40
+icon = checklist
+color = green
+name = Projets | Projects
+summary = Projet, statut, échéance, priorité | Project, status, due date, priority
+]]
+
+-- French translations (English is the source language).
+doobs.trInit("fr", {
+  ["Projects"] = "Projets",
+  ["Project, status, due date, priority"] = "Projet, statut, échéance, priorité",
+  ["Status"] = "Statut",
+  ["Due date"] = "Échéance",
+  ["To do"] = "À faire",
+  ["In progress"] = "En cours",
+  ["On hold"] = "En attente",
+  ["Completed"] = "Terminé",
+  ["Project"] = "Projet",
+  ["No."] = "N°",
+  ["Priority"] = "Priorité",
+  ["Start"] = "Début",
+  ["Days remaining"] = "Jours restants",
+  ["Time spent"] = "Temps passé",
+  ["Not completed"] = "Non terminés",
+})
+local T = doobs.tr
+
+function parameters(ctx)
+  return doobs.parameters(T("Projects"), {
+    database = T("Projects"),
+    message = T("Project, status, due date, priority"),
+  })
+end
+
+function import(ctx)
+  local STATUS, DUE = T("Status"), T("Due date")
+  local TODO, DOING, WAITING, DONE = T("To do"), T("In progress"), T("On hold"), T("Completed")
+
+  local db = doobs.database()
+
+  local projects = db:addLibrary(T("Projects"), { icon = "checklist", color = "green" })
+  projects:addField(T("Project"))
+  projects:addField(T("No."), "serial")
+  projects:addField(STATUS, "choice", { choices = { TODO, DOING, WAITING, DONE }, default = TODO })
+  projects:addField(T("Priority"), "rating", { max = 3 })
+  projects:addField(T("Start"), "date", { default = "@today" })
+  projects:addField(DUE, "date")
+  projects:addField(T("Days remaining"), "formula", {
+    result = "number", formula = string.format('IF(ISBLANK([%s]); ""; DAYS([%s]; TODAY()))', DUE, DUE) })
+  projects:addField(T("Budget"), "currency")
+  projects:addField(T("Time spent"), "duration")
+  projects:addField(T("Description"), "longtext")
+
+  projects:addCollection(DOING, { { STATUS, "=", DOING } })
+  projects:addCollection(T("Not completed"), { { STATUS, "<>", DONE } })
+
+  return db
+end

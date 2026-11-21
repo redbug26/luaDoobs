@@ -1,0 +1,11 @@
+{
+  "file": "discogs.luaDoobs",
+  "title": {
+    "en": "Discogs collection",
+    "fr": "Collection Discogs"
+  },
+  "description": {
+    "en": "Import your Discogs records: collection and wantlist, artists linked, covers, formats, conditions and notes; refresh in place.",
+    "fr": "Importez vos disques Discogs : collection et liste de recherche, artistes liés, pochettes, formats, états et notes ; actualisation sur place."
+  }
+}

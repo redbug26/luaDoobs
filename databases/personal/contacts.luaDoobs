@@ -1,0 +1,57 @@
+-- Official Doobs template: Contacts
+-- Name, phone, email, address; a calculated “Full name” is the title.
+-- Localized with doobs.tr(English text): translations registered by doobs.trInit below.
+
+--[[doobs-template
+kind = library
+order = 20
+icon = person.crop.rectangle
+color = blue
+name = Contacts | Contacts
+summary = Nom, téléphone, e-mail, adresse | Name, phone, email, address
+]]
+
+-- French translations (English is the source language).
+doobs.trInit("fr", {
+  ["Name, phone, email, address"] = "Nom, téléphone, e-mail, adresse",
+  ["First name"] = "Prénom",
+  ["Name"] = "Nom",
+  ["Full name"] = "Nom complet",
+  ["Company"] = "Société",
+  ["Phone"] = "Téléphone",
+  ["Email"] = "E-mail",
+  ["Address"] = "Adresse",
+  ["Website"] = "Site web",
+  ["Birthday"] = "Anniversaire",
+})
+local T = doobs.tr
+
+function parameters(ctx)
+  return doobs.parameters(T("Contacts"), {
+    database = T("Contacts"),
+    message = T("Name, phone, email, address"),
+  })
+end
+
+function import(ctx)
+  local FIRST, LAST, FULL = T("First name"), T("Name"), T("Full name")
+
+  local db = doobs.database()
+
+  local contacts = db:addLibrary(T("Contacts"), { icon = "person.crop.rectangle", color = "blue" })
+  contacts:addField(FIRST)
+  contacts:addField(LAST)
+  contacts:addField(FULL, "formula", { result = "text", formula = string.format('TRIM([%s] & " " & [%s])', FIRST, LAST) })
+  contacts:addField(T("Photo"), "media")
+  contacts:addField(T("Company"))
+  contacts:addField(T("Phone"), "phone")
+  contacts:addField(T("Email"), "email")
+  contacts:addField(T("Address"), "address")
+  contacts:addField(T("Website"), "url")
+  contacts:addField(T("Birthday"), "date")
+  contacts:addField(T("Notes"), "longtext")
+
+  contacts:setTitle(FULL)
+
+  return db
+end

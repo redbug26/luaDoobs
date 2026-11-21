@@ -1,0 +1,11 @@
+{
+  "file": "subscriptions.luaDoobs",
+  "title": {
+    "en": "Subscriptions and services",
+    "fr": "Abonnements et services"
+  },
+  "description": {
+    "en": "Track recurring prices, billing frequency, payments and renewals, with an annual total for subscriptions selected in the summary. Amounts are in EUR.",
+    "fr": "Suivez les prix récurrents, fréquences, prélèvements et renouvellements, avec un total annuel des abonnements sélectionnés dans le récapitulatif. Montants en EUR."
+  }
+}

@@ -1,0 +1,237 @@
+-- Job applications
+-- Open in Doobs to create Companies, Contacts and Applications: positions, status from wish list to
+-- offer, source, contract, salary range, application and follow-up dates, interviews and documents.
+-- Automatic rules (created with the database):
+--   * “Applied”: when the status becomes Applied, the application date is today and a follow-up is
+--     planned after the number of days chosen when creating the database;
+--   * “Interview”: an interview status updates the date of last contact;
+--   * “Closed”: an offer, acceptance, rejection or withdrawal records the answer date and cancels the
+--     follow-up.
+-- Parameters: follow-up delay in days. No network, no job board access, no personal data.
+
+doobs.trInit("fr", {
+  ["Job applications"] = "Suivi des candidatures",
+  ["My applications"] = "Mes candidatures",
+  ["Applications, companies and contacts, with status, follow-ups and interviews. Dates are filled automatically when the status changes."] = "Candidatures, entreprises et contacts, avec statut, relances et entretiens. Les dates se remplissent automatiquement quand le statut change.",
+  ["Follow up after (days)"] = "Relancer après (jours)",
+  ["A follow-up date is planned this many days after applying."] = "Une date de relance est prévue ce nombre de jours après la candidature.",
+  -- Companies
+  ["Companies"] = "Entreprises",
+  ["Company"] = "Entreprise",
+  ["Sector"] = "Secteur",
+  ["Size"] = "Taille",
+  ["Startup"] = "Start-up",
+  ["Small business"] = "PME",
+  ["Large company"] = "Grande entreprise",
+  ["Public sector"] = "Secteur public",
+  ["Non-profit"] = "Association",
+  ["Website"] = "Site web",
+  ["Careers page"] = "Page carrières",
+  ["Address"] = "Adresse",
+  ["Rating"] = "Appréciation",
+  ["Notes"] = "Notes",
+  -- Contacts
+  ["Contacts"] = "Contacts",
+  ["Contact"] = "Contact",
+  ["Name"] = "Nom",
+  ["Role"] = "Fonction",
+  ["Email"] = "E-mail",
+  ["Phone"] = "Téléphone",
+  ["Profile"] = "Profil",
+  -- Applications
+  ["Applications"] = "Candidatures",
+  ["Application"] = "Candidature",
+  ["Position"] = "Poste",
+  ["Status"] = "Statut",
+  ["Wish list"] = "À postuler",
+  ["Applied"] = "Envoyée",
+  ["Screening"] = "Présélection",
+  ["Interview"] = "Entretien",
+  ["Test"] = "Test",
+  ["Offer"] = "Offre",
+  ["Accepted"] = "Acceptée",
+  ["Rejected"] = "Refusée",
+  ["Withdrawn"] = "Retirée",
+  ["No answer"] = "Sans réponse",
+  ["Priority"] = "Priorité",
+  ["Source"] = "Source",
+  ["Job board"] = "Site d’emploi",
+  ["Company website"] = "Site de l’entreprise",
+  ["Referral"] = "Recommandation",
+  ["Recruiter"] = "Recruteur",
+  ["Unsolicited"] = "Candidature spontanée",
+  ["Other"] = "Autre",
+  ["Job posting"] = "Annonce",
+  ["Reference"] = "Référence",
+  ["Location"] = "Lieu",
+  ["Work mode"] = "Mode de travail",
+  ["On site"] = "Sur site",
+  ["Hybrid"] = "Hybride",
+  ["Remote"] = "À distance",
+  ["Contract"] = "Contrat",
+  ["Permanent"] = "CDI",
+  ["Fixed-term"] = "CDD",
+  ["Freelance"] = "Indépendant",
+  ["Internship"] = "Stage",
+  ["Temporary"] = "Intérim",
+  ["Salary from"] = "Salaire de",
+  ["Salary to"] = "Salaire jusqu’à",
+  ["Applied on"] = "Envoyée le",
+  ["Follow-up on"] = "Relance le",
+  ["Last contact"] = "Dernier contact",
+  ["Answer on"] = "Réponse le",
+  ["Days since applying"] = "Jours depuis l’envoi",
+  ["Follow-up due"] = "Relance à faire",
+  ["Interviews"] = "Entretiens",
+  ["Date"] = "Date",
+  ["Kind"] = "Type",
+  ["With"] = "Avec",
+  ["Video"] = "Visio",
+  ["Resume"] = "CV",
+  ["Cover letter"] = "Lettre de motivation",
+  ["Offer and dates"] = "Offre et dates",
+  ["Documents"] = "Documents",
+  -- Collections
+  ["Active"] = "En cours",
+  ["Closed"] = "Clôturées",
+  -- Rules
+  ["Applied today"] = "Envoyée aujourd’hui",
+  ["Interview contact"] = "Contact d’entretien",
+  ["Answer received"] = "Réponse reçue",
+})
+local T = doobs.tr
+
+function parameters(ctx)
+  local form = doobs.parameters(T("Job applications"), {
+    database = T("My applications"),
+    message = T("Applications, companies and contacts, with status, follow-ups and interviews. Dates are filled automatically when the status changes."),
+  })
+  form:addInteger("followUp", T("Follow up after (days)"), { default = 7,
+    help = T("A follow-up date is planned this many days after applying.") })
+  return form
+end
+
+function import(ctx)
+  local followUp = math.max(1, math.floor(tonumber(ctx.params.followUp) or 7))
+
+  -- Reused names, localized once.
+  local COMPANY, SECTOR, SIZE, WEBSITE, CAREERS = T("Company"), T("Sector"), T("Size"), T("Website"), T("Careers page")
+  local ADDRESS, RATING, NOTES = T("Address"), T("Rating"), T("Notes")
+  local NAME, ROLE, EMAIL, PHONE, PROFILE = T("Name"), T("Role"), T("Email"), T("Phone"), T("Profile")
+  local POSITION, STATUS, PRIORITY, SOURCE, POSTING = T("Position"), T("Status"), T("Priority"), T("Source"), T("Job posting")
+  local REFERENCE, LOCATION, MODE, CONTRACT = T("Reference"), T("Location"), T("Work mode"), T("Contract")
+  local SALARY_FROM, SALARY_TO, APPLIED_ON, FOLLOW_UP_ON = T("Salary from"), T("Salary to"), T("Applied on"), T("Follow-up on")
+  local LAST_CONTACT, ANSWER_ON, DAYS_SINCE, DUE = T("Last contact"), T("Answer on"), T("Days since applying"), T("Follow-up due")
+  local INTERVIEWS, RESUME, LETTER, CONTACTS = T("Interviews"), T("Resume"), T("Cover letter"), T("Contacts")
+  local WISH, APPLIED, SCREENING, INTERVIEW, TEST = T("Wish list"), T("Applied"), T("Screening"), T("Interview"), T("Test")
+  local OFFER, ACCEPTED, REJECTED, WITHDRAWN, NO_ANSWER = T("Offer"), T("Accepted"), T("Rejected"), T("Withdrawn"), T("No answer")
+
+  local db = doobs.database()
+
+  -- Companies.
+  local companies = db:addLibrary(T("Companies"), { icon = "building.2", color = "indigo" })
+  companies:addField(COMPANY)
+  companies:addField(SECTOR)
+  companies:addField(SIZE, "choice", { choices = { T("Startup"), T("Small business"), T("Large company"),
+                                                   T("Public sector"), T("Non-profit") } })
+  companies:addField(WEBSITE, "url")
+  companies:addField(CAREERS, "url")
+  companies:addField(ADDRESS, "address")
+  companies:addField(RATING, "rating", { max = 5 })
+  companies:addField(NOTES, "longtext")
+  companies:setTitle(COMPANY)
+  companies:setSubtitle(SECTOR)
+  companies:setSort(COMPANY)
+  companies:setView("table")
+  companies:defaultForm({ columns = 2 })
+    :addSection(T("Company"), { { COMPANY, 2 }, SECTOR, SIZE, WEBSITE, CAREERS, ADDRESS, RATING, NOTES })
+
+  -- Contacts: recruiters and interviewers.
+  local contacts = db:addLibrary(CONTACTS, { icon = "person.crop.rectangle", color = "teal" })
+  contacts:addField(NAME)
+  contacts:addField(COMPANY, "relation", { library = companies })
+  contacts:addField(ROLE)
+  contacts:addField(EMAIL, "email")
+  contacts:addField(PHONE, "phone")
+  contacts:addField(PROFILE, "url")
+  contacts:addField(NOTES, "longtext")
+  contacts:setTitle(NAME)
+  contacts:setSubtitle(ROLE)
+  contacts:setSort(NAME)
+  contacts:defaultForm({ columns = 2 })
+    :addSection(T("Contact"), { { NAME, 2 }, COMPANY, ROLE, EMAIL, PHONE, { PROFILE, 2 }, NOTES })
+
+  -- Applications.
+  local applications = db:addLibrary(T("Applications"), { icon = "briefcase", color = "blue" })
+  applications:addField(POSITION)
+  applications:addField(COMPANY, "relation", { library = companies })
+  applications:addField(STATUS, "choice", { choices = { WISH, APPLIED, SCREENING, INTERVIEW, TEST, OFFER,
+                                                        ACCEPTED, REJECTED, WITHDRAWN, NO_ANSWER }, default = WISH })
+  applications:addField(PRIORITY, "rating", { max = 3 })
+  applications:addField(SOURCE, "choice", { choices = { T("Job board"), T("Company website"), T("Referral"),
+                                                        T("Recruiter"), T("Unsolicited"), T("Other") } })
+  applications:addField(POSTING, "url")
+  applications:addField(REFERENCE)
+  applications:addField(LOCATION)
+  applications:addField(MODE, "choice", { choices = { T("On site"), T("Hybrid"), T("Remote") } })
+  applications:addField(CONTRACT, "choice", { choices = { T("Permanent"), T("Fixed-term"), T("Freelance"),
+                                                          T("Internship"), T("Temporary") } })
+  applications:addField(SALARY_FROM, "currency", { currency = "EUR" })
+  applications:addField(SALARY_TO, "currency", { currency = "EUR" })
+  applications:addField(APPLIED_ON, "date")
+  applications:addField(FOLLOW_UP_ON, "date")
+  applications:addField(LAST_CONTACT, "date")
+  applications:addField(ANSWER_ON, "date")
+  applications:addField(DAYS_SINCE, "formula", { result = "number", formula = string.format(
+    'IF(ISBLANK([%s]); ""; IF(ISBLANK([%s]); DAYS(TODAY(); [%s]); DAYS([%s]; [%s])))',
+    APPLIED_ON, ANSWER_ON, APPLIED_ON, ANSWER_ON, APPLIED_ON) })
+  -- A follow-up date reached and no answer yet (the “Closed” rule clears the follow-up date).
+  applications:addField(DUE, "formula", { result = "boolean", formula = string.format(
+    'AND(NOT(ISBLANK([%s])); [%s] <= TODAY(); ISBLANK([%s]))', FOLLOW_UP_ON, FOLLOW_UP_ON, ANSWER_ON) })
+  applications:addField(CONTACTS, "relation", { library = contacts, many = true })
+  applications:addField(INTERVIEWS, "sublist", { columns = {
+    { id = "date", name = T("Date"), type = "date" },
+    { id = "kind", name = T("Kind"), type = "choice", choices = { T("Phone"), T("Video"), T("On site"), T("Test") } },
+    { id = "with", name = T("With") },
+    { id = "notes", name = NOTES },
+  } })
+  applications:addField(RESUME, "media")
+  applications:addField(LETTER, "longtext")
+  applications:addField(NOTES, "longtext")
+
+  applications:setTitle(POSITION)
+  applications:setSubtitle(STATUS)
+  applications:setSort("-" .. APPLIED_ON, POSITION)
+  applications:setGroup(STATUS)
+  applications:setView("split")
+  applications:defaultForm({ columns = 2 })
+    :addSection(T("Application"), { { POSITION, 2 }, COMPANY, STATUS, PRIORITY, SOURCE, { POSTING, 2 }, REFERENCE, CONTACTS })
+    :addSection(T("Offer and dates"), { LOCATION, MODE, CONTRACT, "-", SALARY_FROM, SALARY_TO, APPLIED_ON, FOLLOW_UP_ON,
+                                        LAST_CONTACT, ANSWER_ON, DAYS_SINCE, DUE })
+    :addSection(INTERVIEWS, { INTERVIEWS })
+    :addSection(T("Documents"), { RESUME, LETTER, NOTES })
+
+  -- Smart collections.
+  applications:addCollection(T("Active"), { { STATUS, "<>", WISH }, { STATUS, "<>", ACCEPTED }, { STATUS, "<>", REJECTED },
+                                            { STATUS, "<>", WITHDRAWN }, { STATUS, "<>", NO_ANSWER } })
+  applications:addCollection(DUE, { { DUE, "=", true } })
+  applications:addCollection(WISH, { { STATUS, "=", WISH } })
+  applications:addCollection(T("Interviews"), { { STATUS, "=", INTERVIEW }, { STATUS, "=", TEST } }, "any")
+  applications:addCollection(T("Closed"), { { STATUS, "=", ACCEPTED }, { STATUS, "=", REJECTED },
+                                            { STATUS, "=", WITHDRAWN }, { STATUS, "=", NO_ANSWER } }, "any")
+
+  -- Automatic rules, applied in this order each time an application is saved. Values computed by a
+  -- rule see the record as it was before that rule: hence TODAY() rather than [Applied on] below.
+  applications:addRule(T("Applied today"), { when = { STATUS },
+    condition = { { STATUS, "=", APPLIED }, { APPLIED_ON, "empty" } },
+    set = { [APPLIED_ON] = "@today" },
+    compute = { [FOLLOW_UP_ON] = string.format('DATEADD(TODAY(); %d; "day")', followUp) } })
+  applications:addRule(T("Interview contact"), { on = "update", when = { STATUS },
+    condition = { { STATUS, "=", INTERVIEW }, { STATUS, "=", TEST }, { STATUS, "=", SCREENING } }, match = "any",
+    set = { [LAST_CONTACT] = "@today" } })
+  applications:addRule(T("Answer received"), { on = "update", when = { STATUS },
+    condition = { { STATUS, "=", OFFER }, { STATUS, "=", ACCEPTED }, { STATUS, "=", REJECTED }, { STATUS, "=", WITHDRAWN } },
+    match = "any", set = { [ANSWER_ON] = "@today", [FOLLOW_UP_ON] = "@clear" } })
+
+  return db
+end

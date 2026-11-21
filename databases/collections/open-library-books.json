@@ -1,0 +1,11 @@
+{
+  "file": "open-library-books.luaDoobs",
+  "title": {
+    "en": "Open Library books",
+    "fr": "Livres Open Library"
+  },
+  "description": {
+    "en": "Create a book library from a chosen Open Library subject, with covers and reading status.",
+    "fr": "Créez une bibliothèque de livres à partir d’un sujet Open Library, avec couvertures et état de lecture."
+  }
+}

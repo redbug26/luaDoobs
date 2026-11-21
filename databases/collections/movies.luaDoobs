@@ -1,0 +1,66 @@
+-- Official Doobs template: Movies
+-- Title, director, year, genres (multiple choice), format, watched, rating; “To watch” collection.
+-- Localized with doobs.tr(English text): translations registered by doobs.trInit below.
+
+--[[doobs-template
+kind = library
+order = 70
+icon = film
+color = purple
+name = Films | Movies
+summary = Titre, réalisateur, année, vu, note | Title, director, year, watched, rating
+]]
+
+-- French translations (English is the source language).
+doobs.trInit("fr", {
+  ["Movies"] = "Films",
+  ["Title, director, year, watched, rating"] = "Titre, réalisateur, année, vu, note",
+  ["Watched"] = "Vu",
+  ["Title"] = "Titre",
+  ["Poster"] = "Affiche",
+  ["Director"] = "Réalisateur",
+  ["Year"] = "Année",
+  ["Comedy"] = "Comédie",
+  ["Drama"] = "Drame",
+  ["Sci-fi"] = "SF",
+  ["Horror"] = "Horreur",
+  ["Documentary"] = "Documentaire",
+  ["Format"] = "Support",
+  ["Digital"] = "Numérique",
+  ["Duration"] = "Durée",
+  ["Rating"] = "Note",
+  ["To watch"] = "À voir",
+})
+local T = doobs.tr
+
+function parameters(ctx)
+  return doobs.parameters(T("Movies"), {
+    database = T("Movies"),
+    message = T("Title, director, year, watched, rating"),
+  })
+end
+
+function import(ctx)
+  local SEEN = T("Watched")
+
+  local db = doobs.database()
+
+  local movies = db:addLibrary(T("Movies"), { icon = "film", color = "purple" })
+  movies:addField(T("Title"))
+  movies:addField(T("Poster"), "media")
+  movies:addField(T("Director"))
+  movies:addField(T("Year"), "integer")
+  movies:addField(T("Genre"), "multichoice", { choices = {
+    T("Action"), T("Comedy"), T("Drama"), T("Sci-fi"),
+    T("Horror"), T("Animation"), T("Documentary") } })
+  movies:addField(T("Format"), "choice", { choices = {
+    T("DVD"), T("Blu-ray"), T("4K"), T("Digital"), T("VHS") } })
+  movies:addField(T("Duration"), "duration")
+  movies:addField(SEEN, "boolean")
+  movies:addField(T("Rating"), "rating")
+  movies:addField(T("Synopsis"), "longtext")
+
+  movies:addCollection(T("To watch"), { { SEEN, "=", false } })
+
+  return db
+end

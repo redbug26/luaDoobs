@@ -1,0 +1,11 @@
+{
+  "file": "freshservice.luaDoobs",
+  "title": {
+    "en": "Freshservice tickets",
+    "fr": "Tickets Freshservice"
+  },
+  "description": {
+    "en": "Import the tickets and requesters of your Freshservice service desk (recent tickets, predefined filters or your own filter query); refresh in place.",
+    "fr": "Importez les tickets et demandeurs de votre centre de services Freshservice (tickets récents, filtres prédéfinis ou votre requête de filtre) ; actualisation sur place."
+  }
+}

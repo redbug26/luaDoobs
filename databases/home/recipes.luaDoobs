@@ -1,0 +1,69 @@
+-- Official Doobs template: Recipes
+-- Recipe, category, diet (multiple choice), times, ingredients; calculated total time.
+-- Localized with doobs.tr(English text): translations registered by doobs.trInit below.
+
+--[[doobs-template
+kind = library
+order = 50
+icon = fork.knife
+color = red
+name = Recettes | Recipes
+summary = Recette, catégorie, temps, ingrédients | Recipe, category, time, ingredients
+]]
+
+-- French translations (English is the source language).
+doobs.trInit("fr", {
+  ["Recipes"] = "Recettes",
+  ["Recipe, category, time, ingredients"] = "Recette, catégorie, temps, ingrédients",
+  ["Preparation time"] = "Préparation",
+  ["Cooking time"] = "Cuisson",
+  ["Recipe"] = "Recette",
+  ["Category"] = "Catégorie",
+  ["Starter"] = "Entrée",
+  ["Main course"] = "Plat",
+  ["Drink"] = "Boisson",
+  ["Appetizer"] = "Apéritif",
+  ["Diet"] = "Régime",
+  ["Vegetarian"] = "Végétarien",
+  ["Vegan"] = "Végan",
+  ["Gluten-free"] = "Sans gluten",
+  ["Lactose-free"] = "Sans lactose",
+  ["Total time"] = "Temps total",
+  ["Servings"] = "Personnes",
+  ["Rating"] = "Note",
+  ["Ingredients"] = "Ingrédients",
+  ["Steps"] = "Étapes",
+})
+local T = doobs.tr
+
+function parameters(ctx)
+  return doobs.parameters(T("Recipes"), {
+    database = T("Recipes"),
+    message = T("Recipe, category, time, ingredients"),
+  })
+end
+
+function import(ctx)
+  local PREP, COOK = T("Preparation time"), T("Cooking time")
+
+  local db = doobs.database()
+
+  local recipes = db:addLibrary(T("Recipes"), { icon = "fork.knife", color = "red" })
+  recipes:addField(T("Recipe"))
+  recipes:addField(T("Photo"), "media")
+  recipes:addField(T("Category"), "choice", { choices = {
+    T("Starter"), T("Main course"), T("Dessert"), T("Drink"), T("Appetizer") } })
+  recipes:addField(T("Diet"), "multichoice", { choices = {
+    T("Vegetarian"), T("Vegan"), T("Gluten-free"), T("Lactose-free") } })
+  recipes:addField(PREP, "duration")
+  recipes:addField(COOK, "duration")
+  -- Durations are in seconds: the total is shown in minutes.
+  recipes:addField(T("Total time"), "formula", { result = "number", formula = string.format("([%s] + [%s]) / 60", PREP, COOK) })
+  recipes:addField(T("Servings"), "integer", { default = 4 })
+  recipes:addField(T("Rating"), "rating")
+  recipes:addField(T("Ingredients"), "longtext")
+  recipes:addField(T("Steps"), "longtext")
+  recipes:addField(T("Source"), "url")
+
+  return db
+end

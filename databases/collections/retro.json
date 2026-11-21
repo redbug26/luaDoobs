@@ -1,0 +1,11 @@
+{
+  "file": "retro.luaDoobs",
+  "title": {
+    "en": "Retro collection (demo)",
+    "fr": "Collection rétro (démo)"
+  },
+  "description": {
+    "en": "Explore a sample collection of games, computers, publishers and acquisitions with relations and calculated totals.",
+    "fr": "Découvrez une collection de démonstration de jeux, machines, éditeurs et acquisitions, avec relations et totaux calculés."
+  }
+}

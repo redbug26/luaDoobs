@@ -1,0 +1,11 @@
+{
+  "file": "gift-tracker.luaDoobs",
+  "title": {
+    "en": "Gift tracker",
+    "fr": "Suivi des cadeaux"
+  },
+  "description": {
+    "en": "Gift ideas, purchases and gifts given or received, by person and occasion, with budgets, thank-you notes and upcoming birthdays.",
+    "fr": "Idées, achats et cadeaux offerts ou reçus, par personne et par occasion, avec budgets, remerciements et anniversaires à venir."
+  }
+}

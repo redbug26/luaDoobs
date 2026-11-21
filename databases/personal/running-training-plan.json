@@ -1,0 +1,11 @@
+{
+  "file": "running-training-plan.luaDoobs",
+  "title": {
+    "en": "Running training plan",
+    "fr": "Plan d’entraînement de course à pied"
+  },
+  "description": {
+    "en": "Generate a progressive running schedule from your goal, start date, number of weeks, sessions per week and easy pace.",
+    "fr": "Générez un programme progressif selon votre objectif, date de début, nombre de semaines, séances par semaine et allure facile."
+  }
+}

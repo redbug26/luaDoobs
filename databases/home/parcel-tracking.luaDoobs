@@ -1,0 +1,241 @@
+-- Parcel tracking
+-- Open in Doobs to create Parcels and Contacts: incoming and outgoing parcels, carrier, tracking
+-- number, status, order, costs, dates, delivery events and recipients.
+-- Automatic rules (created with the database):
+--   * “Tracking link” rebuilds the carrier’s tracking page address from the carrier and the tracking
+--     number (Lua action, no network: it only formats an address; edit CARRIERS in the rule to add one);
+--   * “Shipped on” and “Delivered on” are filled with today’s date when the status changes;
+--   * entering a delivery date sets the status to “Delivered”.
+-- Statuses are updated by hand: carriers do not offer a free public tracking API.
+-- Parameters: default carrier. No sample records, no personal data.
+
+doobs.trInit("fr", {
+  ["Parcel tracking"] = "Suivi des colis",
+  ["My parcels"] = "Mes colis",
+  ["Incoming and outgoing parcels with their carrier, tracking number, status and dates. The tracking link is built automatically from the carrier and the number."] = "Colis reçus et envoyés avec leur transporteur, numéro de suivi, statut et dates. Le lien de suivi est construit automatiquement à partir du transporteur et du numéro.",
+  ["Default carrier"] = "Transporteur par défaut",
+  ["Other"] = "Autre",
+  -- Parcels
+  ["Parcels"] = "Colis",
+  ["Parcel"] = "Colis",
+  ["Description"] = "Description",
+  ["Tracking number"] = "Numéro de suivi",
+  ["Carrier"] = "Transporteur",
+  ["Direction"] = "Sens",
+  ["Incoming"] = "À recevoir",
+  ["Outgoing"] = "À envoyer",
+  ["Status"] = "Statut",
+  ["Ordered"] = "Commandé",
+  ["Shipped"] = "Expédié",
+  ["In transit"] = "En transit",
+  ["Out for delivery"] = "En cours de livraison",
+  ["At pickup point"] = "En point relais",
+  ["Delivered"] = "Livré",
+  ["Delayed"] = "Retardé",
+  ["Returned"] = "Retourné",
+  ["Lost"] = "Perdu",
+  ["Shop or sender"] = "Boutique ou expéditeur",
+  ["Recipient"] = "Destinataire",
+  ["Order number"] = "Numéro de commande",
+  ["Order page"] = "Page de la commande",
+  ["Tracking link"] = "Lien de suivi",
+  ["Ordered on"] = "Commandé le",
+  ["Shipped on"] = "Expédié le",
+  ["Expected on"] = "Attendu le",
+  ["Delivered on"] = "Livré le",
+  ["Price"] = "Prix",
+  ["Shipping cost"] = "Frais de port",
+  ["Total"] = "Total",
+  ["Days in transit"] = "Jours en transit",
+  ["Late"] = "En retard",
+  ["Pickup point"] = "Point relais",
+  ["Pickup code"] = "Code de retrait",
+  ["Events"] = "Étapes",
+  ["Date"] = "Date",
+  ["Place"] = "Lieu",
+  ["Event"] = "Étape",
+  ["Receipt or label"] = "Reçu ou étiquette",
+  ["Notes"] = "Notes",
+  ["Order"] = "Commande",
+  ["Dates"] = "Dates",
+  ["Delivery"] = "Livraison",
+  -- Collections
+  ["Active"] = "En cours",
+  ["To pick up"] = "À retirer",
+  ["Problems"] = "Problèmes",
+  ["Delivered in the last 30 days"] = "Livrés ces 30 derniers jours",
+  -- Contacts
+  ["Contacts"] = "Contacts",
+  ["Name"] = "Nom",
+  ["Address"] = "Adresse",
+  ["Phone"] = "Téléphone",
+  ["Email"] = "E-mail",
+  ["Contact"] = "Contact",
+  -- Rules
+  ["Shipping date"] = "Date d’expédition",
+  ["Delivery date"] = "Date de livraison",
+  ["Delivered when dated"] = "Livré dès qu’il est daté",
+})
+local T = doobs.tr
+
+-- Carriers offered in the choice list. They are proper names, identical in every language, and must
+-- match the keys of CARRIERS in the rule script below; any other carrier uses a universal tracking site.
+local CARRIER_NAMES = { "bpost", "PostNL", "DHL", "DPD", "GLS", "UPS", "FedEx", "La Poste", "Royal Mail", "USPS" }
+
+-- Lua action of the “Tracking link” rule. It is kept verbatim in this file so that it is approved with
+-- it; it reads the field names in English or French, the two languages the database can be created in.
+local TRACKING_LINK = [==[
+-- Parcel tracking: tracking link
+-- Rebuilds the tracking page address from the carrier and the tracking number. No network access.
+-- {number} is replaced by the tracking number. Add a carrier here and in the “Carrier” choice list.
+local CARRIERS = {
+  ["bpost"]      = "https://track.bpost.cloud/btr/web/#/search?itemCode={number}",
+  ["PostNL"]     = "https://jouw.postnl.nl/track-and-trace/{number}",
+  ["DHL"]        = "https://www.dhl.com/global-en/home/tracking/tracking-parcel.html?submit=1&tracking-id={number}",
+  ["DPD"]        = "https://tracking.dpd.de/status/en_US/parcel/{number}",
+  ["GLS"]        = "https://gls-group.com/track/{number}",
+  ["UPS"]        = "https://www.ups.com/track?tracknum={number}",
+  ["FedEx"]      = "https://www.fedex.com/fedextrack/?trknbr={number}",
+  ["La Poste"]   = "https://www.laposte.fr/outils/suivre-vos-envois?code={number}",
+  ["Royal Mail"] = "https://www.royalmail.com/track-your-item#/tracking-results/{number}",
+  ["USPS"]       = "https://tools.usps.com/go/TrackConfirmAction?tLabels={number}",
+}
+-- Any other carrier: universal tracking site.
+local FALLBACK = "https://t.17track.net/en#nums={number}"
+
+-- Field names, by language of the database.
+local FIELDS = {
+  { status = "Status", number = "Tracking number", carrier = "Carrier", link = "Tracking link" },
+  { status = "Statut", number = "Numéro de suivi", carrier = "Transporteur", link = "Lien de suivi" },
+}
+
+function rule(ctx)
+  for _, names in ipairs(FIELDS) do
+    -- The status always has a value: it tells which language the field names are in.
+    if ctx.record[names.status] ~= nil or ctx.record[names.number] ~= nil then
+      local number = ctx.record[names.number]
+      number = type(number) == "string" and number:gsub("%s", "") or ""
+      if number == "" then return { [names.link] = "@clear" } end
+      local pattern = CARRIERS[ctx.record[names.carrier] or ""] or FALLBACK
+      local encoded = doobs.url.encode(number)
+      return { [names.link] = (pattern:gsub("{number}", function() return encoded end)) }
+    end
+  end
+  return nil
+end
+]==]
+
+function parameters(ctx)
+  local choices = {}
+  for _, name in ipairs(CARRIER_NAMES) do choices[#choices + 1] = name end
+  choices[#choices + 1] = T("Other")
+  local form = doobs.parameters(T("Parcel tracking"), {
+    database = T("My parcels"),
+    message = T("Incoming and outgoing parcels with their carrier, tracking number, status and dates. The tracking link is built automatically from the carrier and the number."),
+  })
+  form:addChoice("carrier", T("Default carrier"), choices, { default = "bpost" })
+  return form
+end
+
+function import(ctx)
+  -- Reused names, localized once.
+  local DESCRIPTION, NUMBER, CARRIER, DIRECTION = T("Description"), T("Tracking number"), T("Carrier"), T("Direction")
+  local STATUS, SHOP, RECIPIENT, ORDER_NUMBER = T("Status"), T("Shop or sender"), T("Recipient"), T("Order number")
+  local ORDER_PAGE, LINK, ORDERED_ON, SHIPPED_ON = T("Order page"), T("Tracking link"), T("Ordered on"), T("Shipped on")
+  local EXPECTED_ON, DELIVERED_ON, PRICE, SHIPPING = T("Expected on"), T("Delivered on"), T("Price"), T("Shipping cost")
+  local TOTAL, DAYS_IN_TRANSIT, LATE, PICKUP = T("Total"), T("Days in transit"), T("Late"), T("Pickup point")
+  local PICKUP_CODE, EVENTS, RECEIPT, NOTES = T("Pickup code"), T("Events"), T("Receipt or label"), T("Notes")
+  local NAME, ADDRESS, PHONE, EMAIL = T("Name"), T("Address"), T("Phone"), T("Email")
+  local INCOMING, OUTGOING = T("Incoming"), T("Outgoing")
+  local ORDERED, SHIPPED, IN_TRANSIT, OUT_FOR_DELIVERY = T("Ordered"), T("Shipped"), T("In transit"), T("Out for delivery")
+  local AT_PICKUP, DELIVERED, DELAYED, RETURNED, LOST = T("At pickup point"), T("Delivered"), T("Delayed"), T("Returned"), T("Lost")
+
+  local carriers = {}
+  for _, name in ipairs(CARRIER_NAMES) do carriers[#carriers + 1] = name end
+  carriers[#carriers + 1] = T("Other")
+
+  local db = doobs.database()
+
+  -- Contacts: recipients of outgoing parcels.
+  local contacts = db:addLibrary(T("Contacts"), { icon = "person.crop.circle", color = "teal" })
+  contacts:addField(NAME)
+  contacts:addField(ADDRESS, "address")
+  contacts:addField(PHONE, "phone")
+  contacts:addField(EMAIL, "email")
+  contacts:addField(NOTES, "longtext")
+  contacts:setTitle(NAME)
+  contacts:setSort(NAME)
+  contacts:defaultForm({ columns = 2 }):addSection(T("Contact"), { { NAME, 2 }, ADDRESS, PHONE, EMAIL, NOTES })
+
+  -- Parcels.
+  local parcels = db:addLibrary(T("Parcels"), { icon = "shippingbox", color = "orange" })
+  parcels:addField(DESCRIPTION)
+  parcels:addField(DIRECTION, "choice", { choices = { INCOMING, OUTGOING }, default = INCOMING })
+  parcels:addField(STATUS, "choice", { choices = { ORDERED, SHIPPED, IN_TRANSIT, OUT_FOR_DELIVERY, AT_PICKUP,
+                                                   DELIVERED, DELAYED, RETURNED, LOST }, default = ORDERED })
+  parcels:addField(CARRIER, "choice", { choices = carriers, default = ctx.params.carrier or "bpost" })
+  parcels:addField(NUMBER)
+  parcels:addField(LINK, "url")
+  parcels:addField(SHOP)
+  parcels:addField(ORDER_NUMBER)
+  parcels:addField(ORDER_PAGE, "url")
+  parcels:addField(PRICE, "currency", { currency = "EUR" })
+  parcels:addField(SHIPPING, "currency", { currency = "EUR" })
+  parcels:addField(TOTAL, "formula", { result = "currency", formula = string.format(
+    'IF(AND(ISBLANK([%s]); ISBLANK([%s])); ""; COALESCE([%s]; 0) + COALESCE([%s]; 0))', PRICE, SHIPPING, PRICE, SHIPPING) })
+  parcels:addField(ORDERED_ON, "date", { default = "@today" })
+  parcels:addField(SHIPPED_ON, "date")
+  parcels:addField(EXPECTED_ON, "date")
+  parcels:addField(DELIVERED_ON, "date")
+  -- Days since shipping, until delivery.
+  parcels:addField(DAYS_IN_TRANSIT, "formula", { result = "number", formula = string.format(
+    'IF(ISBLANK([%s]); ""; IF(ISBLANK([%s]); DAYS(TODAY(); [%s]); DAYS([%s]; [%s])))',
+    SHIPPED_ON, DELIVERED_ON, SHIPPED_ON, DELIVERED_ON, SHIPPED_ON) })
+  -- Expected date passed and not delivered (returned or lost parcels are not “late”).
+  parcels:addField(LATE, "formula", { result = "boolean", formula = string.format(
+    'AND(NOT(ISBLANK([%s])); ISBLANK([%s]); [%s] < TODAY(); [%s] <> "%s"; [%s] <> "%s")',
+    EXPECTED_ON, DELIVERED_ON, EXPECTED_ON, STATUS, RETURNED, STATUS, LOST) })
+  parcels:addField(RECIPIENT, "relation", { library = contacts })
+  parcels:addField(PICKUP)
+  parcels:addField(PICKUP_CODE)
+  parcels:addField(EVENTS, "sublist", { columns = {
+    { id = "date", name = T("Date"), type = "date" },
+    { id = "place", name = T("Place") },
+    { id = "event", name = T("Event") },
+  } })
+  parcels:addField(RECEIPT, "media")
+  parcels:addField(NOTES, "longtext")
+
+  parcels:setTitle(DESCRIPTION)
+  parcels:setSubtitle(STATUS)
+  parcels:setSort("-" .. ORDERED_ON, DESCRIPTION)
+  parcels:setView("split")
+
+  parcels:defaultForm({ columns = 2 })
+    :addSection(T("Parcel"), { { DESCRIPTION, 2 }, DIRECTION, STATUS, CARRIER, NUMBER, { LINK, 2 } })
+    :addSection(T("Order"), { SHOP, ORDER_NUMBER, { ORDER_PAGE, 2 }, PRICE, SHIPPING, TOTAL })
+    :addSection(T("Dates"), { ORDERED_ON, SHIPPED_ON, EXPECTED_ON, DELIVERED_ON, DAYS_IN_TRANSIT, LATE })
+    :addSection(T("Delivery"), { RECIPIENT, PICKUP, PICKUP_CODE, EVENTS, RECEIPT, NOTES })
+
+  -- Smart collections.
+  parcels:addCollection(T("Active"), { { STATUS, "<>", DELIVERED }, { STATUS, "<>", RETURNED }, { STATUS, "<>", LOST } })
+  parcels:addCollection(LATE, { { LATE, "=", true } })
+  parcels:addCollection(T("To pick up"), { { STATUS, "=", AT_PICKUP } })
+  parcels:addCollection(OUTGOING, { { DIRECTION, "=", OUTGOING } })
+  parcels:addCollection(T("Problems"), { { STATUS, "=", DELAYED }, { STATUS, "=", RETURNED }, { STATUS, "=", LOST } }, "any")
+  parcels:addCollection(T("Delivered in the last 30 days"), { { DELIVERED_ON, "lastdays", 30 } })
+
+  -- Automatic rules, applied in this order each time a parcel is saved.
+  parcels:addRule(T("Tracking link"), { when = { NUMBER, CARRIER }, script = TRACKING_LINK })
+  parcels:addRule(T("Shipping date"), { when = { STATUS },
+    condition = { { SHIPPED_ON, "empty" }, { STATUS, "<>", ORDERED }, { STATUS, "<>", LOST } },
+    set = { [SHIPPED_ON] = "@today" } })
+  parcels:addRule(T("Delivery date"), { when = { STATUS },
+    condition = { { STATUS, "=", DELIVERED }, { DELIVERED_ON, "empty" } },
+    set = { [DELIVERED_ON] = "@today" } })
+  parcels:addRule(T("Delivered when dated"), { on = "update", when = { DELIVERED_ON },
+    condition = { { DELIVERED_ON, "notempty" }, { STATUS, "<>", DELIVERED } },
+    set = { [STATUS] = DELIVERED } })
+
+  return db
+end

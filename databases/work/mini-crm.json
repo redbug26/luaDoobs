@@ -1,0 +1,11 @@
+{
+  "file": "mini-crm.luaDoobs",
+  "title": {
+    "en": "Mini CRM",
+    "fr": "Mini CRM"
+  },
+  "description": {
+    "en": "Manage customers, suppliers and acquaintances with contact details, notes, exchange history, follow-ups, appointments and related projects.",
+    "fr": "Gérez les clients, fournisseurs et connaissances avec coordonnées, notes, historique des échanges, relances, rendez-vous et projets associés."
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "file": "trips.luaDoobs",
+  "title": {
+    "en": "Trips",
+    "fr": "Voyages"
+  },
+  "description": {
+    "en": "Plan trips with dates, destinations, accommodation, places, expenses, budgets and memories.",
+    "fr": "Planifiez les voyages avec dates, destinations, hébergements, lieux, dépenses, budgets et souvenirs."
+  }
+}
